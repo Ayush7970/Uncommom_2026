@@ -1,6 +1,12 @@
-# Prophet Forecast — Sigma Lab AI Forecasting Track
+# PRIMA -o | Prediction-market Reasoning Infrastructure for Multi-trial Agents
 
-**Team:** Uprising · **Track:** AI Forecasting · **Hackathon:** Uncommon Hacks
+Orchestrated via LangGraph, built upon Prophet Arena & Murphy's BLF systems, we develop 
+what neither does alone: route by domain, refine by evidence, know when to trust the 
+crowd, and when to beat it.
+
+# Prophet Arena Sigma Lab AI Forecasting Track
+
+**Team:** Cracked · **Track:** AI Forecasting · **Hackathon:** Uncommon Hacks 2026, ProphetHacks 2026
 
 > "Calibration error matters a lot to risk control. High market return ≠ good Brier score."
 > — Professor Haifeng, Sigma Lab
