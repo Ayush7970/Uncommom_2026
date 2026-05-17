@@ -200,16 +200,98 @@ def _detect_sport(question: str) -> tuple[str, str]:
 # Main research function
 # ---------------------------------------------------------------------------
 
+def _sports_result_search(
+    binary_question: str,
+    clean_question: str,
+    sport: str,
+    team1: str | None,
+    team2: str | None,
+    snap_year: str,
+    snapshot_ts: str,
+    api_key: str,
+) -> list[dict]:
+    """
+    For championship/league/playoff markets: run targeted result searches.
+    Finds the actual winner rather than pre-match analysis.
+    """
+    import re, time
+    from ..tools.recursive_search import recursive_search
+
+    # Extract YES/NO team names from binary question
+    yes_name = no_name = None
+    m = re.search(r"YES\s*=\s*([^,\)\n]+)", binary_question)
+    if m:
+        raw = m.group(1).strip()
+        yes_name = raw.replace("wins", "").replace("win", "").strip()
+    m = re.search(r"NO\s*=\s*([^,\)\n]+)", binary_question)
+    if m:
+        raw = m.group(1).strip()
+        no_name = raw.replace("wins", "").replace("win", "").strip()
+
+    result_queries = []
+    if sport in ("soccer", "uefa"):
+        # League champion searches
+        if yes_name:
+            result_queries.append(f'"{yes_name}" wins {clean_question} champion {snap_year}')
+        result_queries.append(f"{clean_question} final standings champion winner {snap_year}")
+        result_queries.append(f"{clean_question} title winner {snap_year}")
+    elif sport in ("basketball", "nba") and any(k in clean_question.lower() for k in ["playoff", "series", "round", "finals", "championship"]):
+        if yes_name:
+            result_queries.append(f'"{yes_name}" wins series {snap_year} result')
+        result_queries.append(f"{clean_question} result winner series {snap_year}")
+    elif sport in ("hockey", "nhl"):
+        result_queries.append(f"{clean_question} winner {snap_year}")
+        if yes_name:
+            result_queries.append(f'"{yes_name}" wins {snap_year}')
+    elif sport in ("cricket",):
+        result_queries.append(f"{clean_question} result winner match {snap_year}")
+        if team1:
+            result_queries.append(f"{team1} wins cricket {snap_year} result")
+
+    if not result_queries:
+        return []
+
+    all_evidence = []
+    seen_urls: set[str] = set()
+    for query in result_queries[:3]:
+        results = recursive_search(
+            question=query, category="sports",
+            snapshot_ts=snapshot_ts, api_key=api_key,
+            max_iterations=1, results_per_query=3,
+        )
+        for item in results:
+            url = item.get("url", "")
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            body = item.get("text") or item.get("snippet") or ""
+            if body:
+                all_evidence.append({
+                    "source": url, "title": item.get("title", ""),
+                    "content": f"[RESULT SEARCH] {body[:2000]}",
+                    "iteration": 0, "relevance": 0.95,
+                })
+                if item.get("text"):
+                    break
+        time.sleep(0.2)
+
+    return all_evidence
+
+
 def research_sports(state: ForecastState) -> dict:
     """
     Gather sports evidence for the given market snapshot.
     Returns evidence list and features dict for the ML model.
     """
+    from ..tools.recursive_search import _clean_for_search
     question    = state["question"]
+    clean_q     = _clean_for_search(question)
     snapshot_ts = state["snapshot_ts"]
+    snap_year   = snapshot_ts[:4]
+    api_key     = os.environ.get("BRAVE_API_KEY", "")
 
-    team1_name, team2_name = _extract_teams(question)
-    sport, league = _detect_sport(question)
+    team1_name, team2_name = _extract_teams(clean_q)
+    sport, league = _detect_sport(clean_q)
 
     log.info("Sports research: teams=('%s', '%s')  sport=%s", team1_name, team2_name, league)
 
@@ -293,7 +375,25 @@ def research_sports(state: ForecastState) -> dict:
         "relevance":   1.0,
     })
 
-    log.info("Sports research complete: %d evidence items", len(evidence))
+    # For knowable sports results (leagues, playoffs, championships) run a
+    # targeted result search — same approach that fixed politics accuracy.
+    # Skip for obscure individual matches (tennis/ITF) where no data exists.
+    is_result_searchable = sport in ("soccer", "basketball", "hockey", "cricket")
+    if is_result_searchable:
+        result_items = _sports_result_search(
+            binary_question=question,
+            clean_question=clean_q,
+            sport=sport,
+            team1=team1_name,
+            team2=team2_name,
+            snap_year=snap_year,
+            snapshot_ts=snapshot_ts,
+            api_key=api_key,
+        )
+        # Prepend so synthesis sees result evidence first
+        evidence = result_items + evidence
+
+    log.info("Sports research complete: %d evidence items  sport=%s", len(evidence), sport)
     return {
         "evidence":            evidence,
         "search_queries_used": [f"{team1_name} vs {team2_name} {sport}"],

@@ -139,6 +139,55 @@ def research_general(state: ForecastState) -> dict:
         if q and q not in queries_used:
             queries_used.append(q)
 
+    # ── Culture: run an entertainment result search ─────────────────────────
+    # TV show winners, Netflix announcements etc. are findable via web search.
+    if category == "culture":
+        yes_name, _ = _extract_candidates(raw_question)
+        culture_queries = []
+        snap_yr = snap_year
+
+        ql = search_question.lower()
+        if yes_name and len(yes_name) > 3:
+            culture_queries.append(f'"{yes_name}" winner revealed {snap_yr}')
+            culture_queries.append(f'"{yes_name}" wins {search_question[:50]} {snap_yr}')
+        if any(k in ql for k in ["survivor", "masked singer", "big brother", "bachelor", "idol"]):
+            culture_queries.append(f"{search_question} winner finale {snap_yr}")
+        elif any(k in ql for k in ["netflix", "roast", "special"]):
+            culture_queries.append(f"{search_question} announced confirmed {snap_yr}")
+        elif any(k in ql for k in ["tournament", "competition", "championship"]):
+            culture_queries.append(f"{search_question} winner champion {snap_yr}")
+        else:
+            culture_queries.append(f"{search_question} result winner {snap_yr}")
+
+        seen_urls_culture: set[str] = set()
+        culture_evidence = []
+        for query in culture_queries[:3]:
+            results = recursive_search(
+                question=query, category="culture",
+                snapshot_ts=snapshot_ts, api_key=api_key,
+                max_iterations=1, results_per_query=3,
+            )
+            for item in results:
+                url = item.get("url", "")
+                if url in seen_urls:
+                    continue
+                seen_urls_culture.add(url)
+                body = item.get("text") or item.get("snippet") or ""
+                if body:
+                    culture_evidence.append({
+                        "source": url, "title": item.get("title", ""),
+                        "content": f"[RESULT SEARCH] {body[:2000]}",
+                        "iteration": 0, "relevance": 0.95,
+                        "query": query,
+                    })
+                    if item.get("text"):
+                        break
+            import time; time.sleep(0.2)
+
+        evidence = culture_evidence + evidence
+        queries_used += [e.get("query", "") for e in culture_evidence if e.get("query")]
+        log.info("Culture result search: +%d items", len(culture_evidence))
+
     # ── Politics: run an extra name-specific result search ──────────────────
     # The standard search often finds incumbency history / polls instead of
     # the actual 2026 result. We run dedicated "[candidate] won [year]" queries

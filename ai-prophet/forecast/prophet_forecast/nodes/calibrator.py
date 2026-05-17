@@ -21,9 +21,10 @@ log = logging.getLogger(__name__)
 
 _ARTIFACTS_DIR = os.path.join(os.path.dirname(__file__), "..", "ml", "artifacts")
 
-CONFIDENCE_GATE        = 0.40   # default: below this → output p_market
-CONFIDENCE_GATE_CULTURE  = 0.22 # culture/entertainment: Claude has strong training knowledge
-CONFIDENCE_GATE_POLITICS = 0.35 # politics: result search now finds actual winners
+CONFIDENCE_GATE          = 0.40  # default: below this → output p_market
+CONFIDENCE_GATE_CULTURE  = 0.15  # culture: Claude+search has strong entertainment knowledge
+CONFIDENCE_GATE_SPORTS   = 0.33  # sports: result search finds league/playoff winners
+CONFIDENCE_GATE_POLITICS = 0.35  # politics: result search finds election winners
 UNINFORMATIVE_THRESH   = 0.01   # |p_market - 0.5| < this → market is useless anchor
 HIGH_CONFIDENCE        = 0.65   # above this → bypass Platt compression
 SHARPEN_CONFIDENCE_MIN = 0.65
