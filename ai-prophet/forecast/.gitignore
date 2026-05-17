@@ -4,7 +4,7 @@ __pycache__/
 *.pyo
 venv/
 .venv/
-*.pkl
+# *.pkl  # kept in repo so judges get pre-trained models without running train scripts
 forecast_log.db
 outputs/
 .DS_Store
