@@ -263,7 +263,7 @@ def run_market(market: dict) -> list[dict]:
                 "p_calibrated": result.get("p_calibrated"),
                 "p_final": result.get("p_final", float(snap["price_yes"])),
                 "w_t": result.get("w_t"),
-                "outcome": int(outcome),
+                "outcome": int(outcome) if outcome is not None else None,
                 "rationale": result.get("rationale", ""),
                 "error": result.get("error"),
             })
@@ -281,9 +281,13 @@ def main() -> None:
                         help="Directory for CSV output and calibration plot")
     parser.add_argument("--limit", type=int, default=None,
                         help="Max number of markets to process (for quick tests)")
+    parser.add_argument("--offset", type=int, default=0,
+                        help="Skip the first N markets (0-indexed)")
     args = parser.parse_args()
 
     markets = load_dataset(args.dataset)
+    if args.offset:
+        markets = markets[args.offset:]
     if args.limit:
         markets = markets[:args.limit]
 
