@@ -16,8 +16,8 @@ import math
 
 log = logging.getLogger(__name__)
 
-KL_THRESHOLD      = 0.005   # minimum KL divergence to accept a refinement
-VARIANCE_THRESHOLD = 0.04   # std dev across iterations triggers oscillation fallback
+KL_THRESHOLD      = 0.02    # minimum KL divergence to accept a refinement
+VARIANCE_THRESHOLD = 0.12   # std dev across iterations triggers oscillation fallback
 
 
 def kl_divergence(p: float, q: float, eps: float = 1e-7) -> float:

@@ -53,7 +53,7 @@ def _targeted_search(state: ForecastState, queries: list[str]) -> dict:
             snapshot_ts=snapshot,
             api_key=api_key,
             max_iterations=1,       # single pass — no recursion in refinement
-            results_per_query=2,
+            results_per_query=3,
         )
         for item in results:
             body = item.get("text") or item.get("snippet") or ""

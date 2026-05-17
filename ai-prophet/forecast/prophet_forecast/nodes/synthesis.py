@@ -48,17 +48,20 @@ You are an expert superforecaster producing calibrated probability estimates for
 prediction markets. Your output is scored by Brier score — lower is better.
 
 CALIBRATION PRINCIPLES:
-1. The market price is a strong prior. Only deviate with specific, concrete evidence.
-2. Generic statements do NOT justify deviation. You need specific facts.
-3. Extremes (p < 0.08 or p > 0.92) require overwhelming evidence.
-4. When uncertain, stay close to the market price.
-5. Consider base rates for similar historical events.
+1. The market price is a useful reference — but when it is 0.50, it means NO real crowd
+   price exists. 0.50 is a neutral placeholder, NOT evidence the answer is 50/50.
+2. Use your training knowledge actively. For sports: player rankings, historical form,
+   head-to-head records. For politics: polling, incumbency, base rates.
+   For "Did X beat Y?" questions — if X outranks or outperforms Y by a significant margin,
+   reflect that in your estimate (0.60–0.80 range for moderate advantages).
+3. Generic statements do NOT justify extremes. Extremes (p < 0.08 or p > 0.92) require
+   overwhelming, unambiguous evidence.
+4. When you genuinely do not know the outcome AND have no evidence pointing either way,
+   output 0.50 with low confidence. But if you know one player/team is significantly
+   stronger, reflect that.
 
-TIME-BUCKET GUIDANCE:
-- long (>4d): weight model signals more
-- medium (1-4d): balanced
-- short (3-24h): lean toward market price
-- urgent (<3h): stay very close to market price
+NOTE: The time-bucket blend (w(t)) already anchors p_final toward the market structurally.
+Focus on producing the most accurate raw estimate.
 
 OUTPUT: Use the provided structured format."""
 
@@ -68,7 +71,7 @@ MARKET QUESTION: {question}
 CONTEXT:
 - Category: {category}
 - Time bucket: {time_bucket} ({hours:.0f} hours to resolution)
-- Market price (crowd prior): {p_market:.3f}
+- Market price (crowd prior): {p_market:.3f}{market_note}
 - ML model estimate: {p_ml:.3f}
 
 ANALOGOUS PAST MARKETS:
@@ -79,8 +82,11 @@ RESEARCH EVIDENCE ({n_evidence} sources):
 
 TASK:
 Ask yourself: "What do I know that the market doesn't?"
-If the answer is "nothing specific", stay close to {p_market:.3f}.
-Produce your calibrated p_yes."""
+- If one competitor is significantly stronger/higher-ranked, factor that in (don't default to 0.5).
+- If your evidence is strong and specific, deviate confidently.
+- Only stay at 0.50 if you genuinely have zero information about relative strength.
+The w(t) blend will anchor p_final toward the market structurally, so do not self-censor.
+Produce your most accurate calibrated p_yes."""
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +132,30 @@ def _build_anthropic_client() -> object | None:
         return None
 
 
+def _build_openrouter_client(model: str, label: str) -> object | None:
+    """Build a ChatOpenAI-compatible client pointed at OpenRouter."""
+    key  = os.environ.get("OPENROUTER_API_KEY", "")
+    base = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    if not key:
+        return None
+    try:
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=model,
+            api_key=key,
+            base_url=base,
+            max_tokens=1024,
+            temperature=0.1,
+            default_headers={
+                "HTTP-Referer": "https://uprising.ai",
+                "X-Title": "PRIMA Forecast",
+            },
+        ).with_structured_output(SynthesisOutput, method="function_calling")
+    except Exception as e:
+        log.warning("OpenRouter %s client init failed: %s", label, e)
+        return None
+
+
 def _build_openai_client() -> object | None:
     key = os.environ.get("OPENAI_API_KEY", "")
     if not key:
@@ -136,7 +166,7 @@ def _build_openai_client() -> object | None:
             model="gpt-4o-mini", api_key=key, max_tokens=1024, temperature=0.1,
         ).with_structured_output(SynthesisOutput)
     except Exception as e:
-        log.warning("OpenAI client init failed: %s", e)
+        log.warning("OpenAI direct client init failed: %s", e)
         return None
 
 
@@ -150,18 +180,26 @@ def _build_gemini_client() -> object | None:
             model="gemini-1.5-flash", google_api_key=key, temperature=0.1,
         ).with_structured_output(SynthesisOutput)
     except Exception as e:
-        log.warning("Gemini client init failed: %s", e)
+        log.warning("Gemini direct client init failed: %s", e)
         return None
 
 
 def _get_clients() -> dict[str, object]:
     global _clients
     if not _clients:
-        for name, builder in [
-            ("anthropic", _build_anthropic_client),
-            ("openai",    _build_openai_client),
-            ("gemini",    _build_gemini_client),
-        ]:
+        builders = [
+            ("anthropic",      _build_anthropic_client),
+            # OpenRouter routes to GPT-4o and Gemini 2.5 Flash
+            ("gpt4o",          lambda: _build_openrouter_client("openai/gpt-4o-2024-11-20", "GPT-4o")),
+            ("gemini_flash",   lambda: _build_openrouter_client("google/gemini-2.5-flash", "Gemini-2.5-Flash")),
+        ]
+        # Fallback: direct keys if OpenRouter isn't available
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            builders += [
+                ("openai_direct",  _build_openai_client),
+                ("gemini_direct",  _build_gemini_client),
+            ]
+        for name, builder in builders:
             client = builder()
             if client is not None:
                 _clients[name] = client
@@ -208,12 +246,15 @@ def synthesis_node(state: ForecastState) -> dict:
     # Inject analogue context
     analogues_text = _build_analogues_text(state["question"], category)
 
+    market_note = "  ← no real crowd price (neutral placeholder)" if abs(p_market - 0.5) < 0.05 else ""
+
     user_msg_str = _USER_TEMPLATE.format(
         question         = state["question"],
         category         = category,
         time_bucket      = bucket,
         hours            = hours,
         p_market         = p_market,
+        market_note      = market_note,
         p_ml             = p_ml,
         n_evidence       = len(search_ev),
         evidence_summary = evidence_summary[:4000],

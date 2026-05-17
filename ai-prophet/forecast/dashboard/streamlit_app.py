@@ -91,9 +91,9 @@ st.divider()
 m1, m2, m3, m4, m5 = st.columns(5)
 
 total    = len(df)
-resolved = int(df["outcome"].notna().sum()) if not df.empty else 0
-our_b    = brier(df)
-mkt_b    = market_brier(df)
+resolved = int(df["outcome"].notna().sum()) if (not df.empty and "outcome" in df.columns) else 0
+our_b    = brier(df) if "outcome" in df.columns else None
+mkt_b    = market_brier(df) if "outcome" in df.columns else None
 delta    = (our_b - mkt_b) if (our_b is not None and mkt_b is not None) else None
 
 m1.metric("Total Forecasts",    total)

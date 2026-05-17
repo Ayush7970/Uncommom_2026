@@ -88,12 +88,22 @@ DEFAULT_ELO = 1500
 
 def _extract_teams(question: str) -> tuple[str | None, str | None]:
     """
-    Try to extract two team names from the question.
+    Try to extract two team/player names from the question.
     Returns (team1, team2) — either may be None.
     """
     q = question.lower()
 
-    # Pattern: "Will X beat/defeat/win against Y"
+    # "Who won the X vs Y [sport] match" — most common in our datasets
+    m = re.search(r"who won the (.+?)\s+vs\s+(.+?)\s+(?:tennis|cricket|football|basketball|hockey|baseball|match|game|series|playoff|test|wta|atp|itf)", q)
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+
+    # "X vs Y match" without "Who won the" prefix
+    m = re.search(r"^(?:the\s+)?(.+?)\s+vs\s+(.+?)\s+(?:match|game|series|test|playoff)", q)
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+
+    # "Will X beat/defeat/win against Y"
     patterns = [
         r"will the (.+?)\s+(?:beat|defeat|win against|top)\s+(?:the\s+)?(.+?)[\?\s]",
         r"will (.+?)\s+(?:beat|defeat|win against|top)\s+(.+?)[\?\s]",
@@ -160,17 +170,30 @@ def _fetch_espn_standings(sport: str, league: str) -> list[dict]:
 
 def _detect_sport(question: str) -> tuple[str, str]:
     q = question.lower()
-    if any(k in q for k in ["nba", "basketball", "nfl", "football", "nhl", "hockey", "mlb", "baseball"]):
-        if "nba" in q or "basketball" in q:  return "basketball", "nba"
-        if "nhl" in q or "hockey" in q:      return "hockey", "nhl"
-        if "nfl" in q or "football" in q:    return "football", "nfl"
-        if "mlb" in q or "baseball" in q:    return "baseball", "mlb"
+    # Tennis keywords
+    if any(k in q for k in ["tennis", "wta", "atp", "itf", "challenger", "grand slam",
+                             "wimbledon", "us open", "australian open", "roland garros", "french open"]):
+        return "tennis", "tennis"
+    # Cricket keywords
+    if any(k in q for k in ["cricket", "test match", "test cricket", "odi", "t20", "ipl",
+                             "county championship", "ashes"]):
+        return "cricket", "cricket"
+    # North American leagues
+    if any(k in q for k in ["nba", "basketball"]):  return "basketball", "nba"
+    if any(k in q for k in ["nhl", "hockey"]):       return "hockey", "nhl"
+    if any(k in q for k in ["nfl", "american football"]):  return "football", "nfl"
+    if any(k in q for k in ["mlb", "baseball"]):     return "baseball", "mlb"
+    # European football keywords
+    if any(k in q for k in ["ligue 1", "la liga", "serie a", "bundesliga", "premier league",
+                             "eredivisie", "liga portugal", "football", "soccer", "fc ", " fc",
+                             "united", "city", "atletico", "juventus", "napoli", "arsenal",
+                             "chelsea", "liverpool", "real madrid", "barcelona"]):
+        return "soccer", "uefa"
     # Guess from team names
-    q_lower = question.lower()
-    if any(t in q_lower for t in _NBA_ELO):  return "basketball", "nba"
-    if any(t in q_lower for t in _NHL_ELO):  return "hockey", "nhl"
-    if any(t in q_lower for t in _NFL_ELO):  return "football", "nfl"
-    return "basketball", "nba"
+    if any(t in q for t in _NBA_ELO):  return "basketball", "nba"
+    if any(t in q for t in _NHL_ELO):  return "hockey", "nhl"
+    if any(t in q for t in _NFL_ELO):  return "football", "nfl"
+    return "unknown", "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -190,68 +213,79 @@ def research_sports(state: ForecastState) -> dict:
 
     log.info("Sports research: teams=('%s', '%s')  sport=%s", team1_name, team2_name, league)
 
-    # Elo lookup
-    elo_home = _lookup_elo(team1_name)
-    elo_away = _lookup_elo(team2_name)
-
     evidence = []
 
-    # Elo evidence
-    evidence.append({
-        "source": "elo_ratings",
-        "content": (
-            f"Team 1 ({team1_name or 'unknown'}): Elo={elo_home:.0f}  "
-            f"Team 2 ({team2_name or 'unknown'}): Elo={elo_away:.0f}  "
-            f"Theoretical win prob for team 1: "
-            f"{1/(1+10**((elo_away-elo_home)/400)):.3f}"
-        ),
-        "relevance": 0.9,
-    })
-
-    # ESPN standings (current-season context)
-    standings = _fetch_espn_standings(sport, league)
-    if standings:
-        top5 = sorted(standings, key=lambda x: -x.get("win_pct", 0))[:5]
-        standings_text = " | ".join(
-            f"{e['name']} {e['wins']}-{e['losses']}" for e in top5
-        )
+    if sport in ("tennis", "cricket", "soccer", "unknown"):
+        # No Elo dictionary for these sports — tell synthesis to rely on web search
         evidence.append({
-            "source": "espn_standings",
-            "content": f"Current {league.upper()} top-5 standings: {standings_text}",
-            "relevance": 0.7,
+            "source": "sport_context",
+            "content": (
+                f"Sport detected: {sport}. "
+                f"Player/Team 1: {team1_name or 'see question'}. "
+                f"Player/Team 2: {team2_name or 'see question'}. "
+                f"No pre-seeded Elo ratings available for this sport — "
+                f"please rely entirely on web search evidence for rankings, form, and head-to-head record."
+            ),
+            "relevance": 0.8,
+        })
+        ml_features = {
+            "elo_home": 1500.0, "elo_away": 1500.0,
+            "home_advantage": 0.0, "rest_diff_days": 0.0, "form_diff": 0.0,
+        }
+    else:
+        # Elo lookup for NBA / NHL / NFL / MLB
+        elo_home = _lookup_elo(team1_name)
+        elo_away = _lookup_elo(team2_name)
+        evidence.append({
+            "source": "elo_ratings",
+            "content": (
+                f"Team 1 ({team1_name or 'unknown'}): Elo={elo_home:.0f}  "
+                f"Team 2 ({team2_name or 'unknown'}): Elo={elo_away:.0f}  "
+                f"Theoretical win prob for team 1: "
+                f"{1/(1+10**((elo_away-elo_home)/400)):.3f}"
+            ),
+            "relevance": 0.9,
         })
 
-        # Look up specific team records
-        for team_name in [team1_name, team2_name]:
-            if not team_name:
-                continue
-            tn = team_name.lower()
-            match = next(
-                (e for e in standings
-                 if tn in e["name"].lower() or tn in e["abbr"].lower()),
-                None
+        standings = _fetch_espn_standings(sport, league)
+        if standings:
+            top5 = sorted(standings, key=lambda x: -x.get("win_pct", 0))[:5]
+            standings_text = " | ".join(
+                f"{e['name']} {e['wins']}-{e['losses']}" for e in top5
             )
-            if match:
-                evidence.append({
-                    "source": "espn_standings",
-                    "content": (
-                        f"{match['name']} current record: "
-                        f"{match['wins']}-{match['losses']} "
-                        f"(win%={match['win_pct']:.3f})"
-                    ),
-                    "relevance": 0.85,
-                })
+            evidence.append({
+                "source": "espn_standings",
+                "content": f"Current {league.upper()} top-5 standings: {standings_text}",
+                "relevance": 0.7,
+            })
+            for team_name in [team1_name, team2_name]:
+                if not team_name:
+                    continue
+                tn = team_name.lower()
+                match_entry = next(
+                    (e for e in standings
+                     if tn in e["name"].lower() or tn in e["abbr"].lower()),
+                    None,
+                )
+                if match_entry:
+                    evidence.append({
+                        "source": "espn_standings",
+                        "content": (
+                            f"{match_entry['name']} current record: "
+                            f"{match_entry['wins']}-{match_entry['losses']} "
+                            f"(win%={match_entry['win_pct']:.3f})"
+                        ),
+                        "relevance": 0.85,
+                    })
 
-    # Build ML features
-    ml_features = {
-        "elo_home":        elo_home,
-        "elo_away":        elo_away,
-        "home_advantage":  1.0,   # assume team1 is home by default
-        "rest_diff_days":  0.0,   # unknown without schedule data
-        "form_diff":       0.0,   # unknown without recent game data
-    }
+        ml_features = {
+            "elo_home":       elo_home,
+            "elo_away":       elo_away,
+            "home_advantage": 1.0,
+            "rest_diff_days": 0.0,
+            "form_diff":      0.0,
+        }
 
-    # Attach features to evidence for ml_predictor_node to consume
     evidence.append({
         "source":      "ml_features",
         "content":     str(ml_features),
@@ -261,6 +295,6 @@ def research_sports(state: ForecastState) -> dict:
 
     log.info("Sports research complete: %d evidence items", len(evidence))
     return {
-        "evidence":           evidence,
-        "search_queries_used": [f"{team1_name} vs {team2_name} {league}"],
+        "evidence":            evidence,
+        "search_queries_used": [f"{team1_name} vs {team2_name} {sport}"],
     }

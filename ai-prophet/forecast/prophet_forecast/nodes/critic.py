@@ -79,17 +79,22 @@ ACCEPT the estimate when:
 - The estimate is well-calibrated (not overconfident)
 
 REQUEST REFINEMENT when:
-- The estimate deviates >15% from market but the evidence is thin or generic
-- There are specific unanswered questions that a web search could resolve
+- The estimate deviates >15% from market AND the market price is NOT near 0.50, and the evidence is thin or generic
+- There are specific unanswered questions that a targeted web search could resolve
 - The rationale is vague ("X is likely" without citing specific facts)
 
-IMPORTANT: Only request refinement if you can write specific, targeted search queries.
+IMPORTANT: When the market price is near 0.50 (within ±0.05), the crowd has NO real price signal —
+this means 0.50 is just a neutral placeholder, NOT evidence that the answer is 50/50.
+In that case, DO NOT penalize the estimate for deviating from 0.50. The model's estimate
+can and should deviate if it has any specific evidence (e.g., player rankings, team form).
+
+Only request refinement if you can write specific, targeted search queries.
 Generic queries like "more information about X" are useless. Be precise."""
 
 _USER_TEMPLATE = """\
 MARKET QUESTION: {question}
 CATEGORY: {category}
-MARKET PRICE (crowd prior): {p_market:.3f}
+MARKET PRICE (crowd prior): {p_market:.3f}{market_note}
 CURRENT ESTIMATE: {p_llm_raw:.3f}
 DEVIATION FROM MARKET: {deviation:+.3f} ({direction})
 
@@ -155,13 +160,15 @@ def critic_node(state: ForecastState) -> dict:
         for e in search_ev[:3]
     ) or "No search evidence."
 
-    deviation  = p_llm_raw - p_market
-    direction  = "above market" if deviation > 0 else "below market"
+    deviation   = p_llm_raw - p_market
+    direction   = "above market" if deviation > 0 else "below market"
+    market_note = "  ← uninformative placeholder (no real crowd price)" if abs(p_market - 0.5) < 0.05 else ""
 
     user_msg = _USER_TEMPLATE.format(
         question     = state["question"],
         category     = state.get("category", "unknown"),
         p_market     = p_market,
+        market_note  = market_note,
         p_llm_raw    = p_llm_raw,
         deviation    = deviation,
         direction    = direction,

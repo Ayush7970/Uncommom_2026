@@ -39,7 +39,26 @@ def ml_predictor_node(state: ForecastState) -> dict:
         log.info("ML predictor [%s]: market=%s  p_ml=%.3f", source, state["market_id"], p_ml)
         return {"p_ml": p_ml}
 
-    # Fallback for other categories — use market price until Phase 3
-    log.info("ML predictor (stub): market=%s  category=%s  p_ml=%.3f (=p_market)",
+    if category == "finance":
+        # Mean-reversion prior: extreme market prices tend to be overconfident
+        # Markets priced >0.80 or <0.20 are pulled 8% toward 0.50
+        if p_market > 0.80:
+            p_ml = p_market - 0.08
+        elif p_market < 0.20:
+            p_ml = p_market + 0.08
+        else:
+            p_ml = p_market
+        log.info("ML predictor [finance/mean-reversion]: market=%s  p_ml=%.3f", state["market_id"], p_ml)
+        return {"p_ml": p_ml}
+
+    if category == "politics":
+        # Base rate prior: incumbents and status-quo outcomes win ~55% of the time
+        # Blend market price 70% with a 0.45 base rate 30%
+        p_ml = 0.70 * p_market + 0.30 * 0.45
+        log.info("ML predictor [politics/base-rate]: market=%s  p_ml=%.3f", state["market_id"], p_ml)
+        return {"p_ml": p_ml}
+
+    # science_tech and culture — no prior, use market price
+    log.info("ML predictor (no prior): market=%s  category=%s  p_ml=%.3f",
              state["market_id"], category, p_market)
     return {"p_ml": p_market}
