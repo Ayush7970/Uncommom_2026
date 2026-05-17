@@ -159,8 +159,22 @@ def _fetch_espn_standings(sport: str, league: str) -> list[dict]:
         return []
 
 
+_INDIVIDUAL_SPORTS_KEYWORDS = [
+    "tennis", "atp", "wta", "itf", "challenger", "wimbledon", "us open",
+    "french open", "australian open", "roland garros",
+    "cricket", "test match", "odi", "ipl", "t20",
+    "golf", "pga", "lpga", "masters",
+    "boxing", "mma", "ufc",
+    "cycling", "tour de france",
+    "swimming", "athletics", "track",
+]
+
+
 def _detect_sport(question: str) -> tuple[str, str]:
     q = question.lower()
+    # Individual sports: no team Elo applies
+    if any(k in q for k in _INDIVIDUAL_SPORTS_KEYWORDS):
+        return "individual", "none"
     if any(k in q for k in ["nba", "basketball", "nfl", "football", "nhl", "hockey", "mlb", "baseball"]):
         if "nba" in q or "basketball" in q:  return "basketball", "nba"
         if "nhl" in q or "hockey" in q:      return "hockey", "nhl"
@@ -191,26 +205,30 @@ def research_sports(state: ForecastState) -> dict:
 
     log.info("Sports research: teams=('%s', '%s')  sport=%s", team1_name, team2_name, league)
 
-    # Elo lookup
-    elo_home = _lookup_elo(team1_name)
-    elo_away = _lookup_elo(team2_name)
-
     evidence = []
+    individual_sport = (sport == "individual")
 
-    # Elo evidence
-    evidence.append({
-        "source": "elo_ratings",
-        "content": (
-            f"Team 1 ({team1_name or 'unknown'}): Elo={elo_home:.0f}  "
-            f"Team 2 ({team2_name or 'unknown'}): Elo={elo_away:.0f}  "
-            f"Theoretical win prob for team 1: "
-            f"{1/(1+10**((elo_away-elo_home)/400)):.3f}"
-        ),
-        "relevance": 0.9,
-    })
+    if not individual_sport:
+        # Elo lookup — only meaningful for team sports with known rosters
+        elo_home = _lookup_elo(team1_name)
+        elo_away = _lookup_elo(team2_name)
 
-    # ESPN standings (current-season context)
-    standings = _fetch_espn_standings(sport, league)
+        if team1_name or team2_name:
+            evidence.append({
+                "source": "elo_ratings",
+                "content": (
+                    f"Team 1 ({team1_name or 'unknown'}): Elo={elo_home:.0f}  "
+                    f"Team 2 ({team2_name or 'unknown'}): Elo={elo_away:.0f}  "
+                    f"Theoretical win prob for team 1: "
+                    f"{1/(1+10**((elo_away-elo_home)/400)):.3f}"
+                ),
+                "relevance": 0.9,
+            })
+    else:
+        elo_home = elo_away = 1500.0  # unused for individual sports
+
+    # ESPN standings (current-season context — skip for individual sports)
+    standings = [] if individual_sport else _fetch_espn_standings(sport, league)
     if standings:
         top5 = sorted(standings, key=lambda x: -x.get("win_pct", 0))[:5]
         standings_text = " | ".join(
@@ -243,13 +261,13 @@ def research_sports(state: ForecastState) -> dict:
                     "relevance": 0.85,
                 })
 
-    # Build ML features
-    ml_features = {
+    # Build ML features — empty dict for individual sports (ml_predictor falls back to p_market)
+    ml_features = {} if individual_sport else {
         "elo_home":        elo_home,
         "elo_away":        elo_away,
-        "home_advantage":  1.0,   # assume team1 is home by default
-        "rest_diff_days":  0.0,   # unknown without schedule data
-        "form_diff":       0.0,   # unknown without recent game data
+        "home_advantage":  1.0 if team1_name else 0.0,
+        "rest_diff_days":  0.0,
+        "form_diff":       0.0,
     }
 
     # Attach features to evidence for ml_predictor_node to consume
