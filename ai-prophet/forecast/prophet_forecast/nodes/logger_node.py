@@ -32,6 +32,8 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
             p_calibrated REAL,
             p_final REAL,
             w_t REAL,
+            outcome INTEGER,                                       
+            brier REAL, 
             rationale TEXT,
             confidence REAL,
             iteration INTEGER,

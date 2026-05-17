@@ -32,10 +32,19 @@ def push_to_snowflake(db_path: str) -> None:
                     "Run: pip install snowflake-snowpark-python")
         return
 
+    # Columns shared between SQLite and Snowflake (excludes 'id' and 'evidence_count')
+    # Snowflake has EVIDENCE VARIANT (JSON) which SQLite doesn't store — left NULL on ingest
+    COLS = [
+        "logged_at", "market_id", "question", "category", "time_bucket",
+        "snapshot_ts", "resolves_at", "p_market", "p_ml", "p_llm_raw",
+        "p_calibrated", "p_final", "w_t", "outcome", "brier",
+        "rationale", "confidence", "iteration", "error",
+    ]
+    col_sql = ", ".join(COLS)
+
     # Load from SQLite
     conn_sqlite = sqlite3.connect(db_path)
-    rows = conn_sqlite.execute("SELECT * FROM forecasts").fetchall()
-    cols = [d[0] for d in conn_sqlite.execute("SELECT * FROM forecasts LIMIT 0").description]
+    rows = conn_sqlite.execute(f"SELECT {col_sql} FROM forecasts").fetchall()
     conn_sqlite.close()
 
     if not rows:
@@ -53,10 +62,9 @@ def push_to_snowflake(db_path: str) -> None:
     )
     cur = conn_sf.cursor()
 
-    placeholders = ", ".join(["%s"] * len(cols))
-    col_names    = ", ".join(cols)
+    placeholders = ", ".join(["%s"] * len(COLS))
     cur.executemany(
-        f"INSERT INTO FORECASTS ({col_names}) VALUES ({placeholders})",
+        f"INSERT INTO FORECASTS ({col_sql}) VALUES ({placeholders})",
         rows,
     )
     conn_sf.commit()
