@@ -123,6 +123,30 @@ def _build_anthropic_client() -> object | None:
         return None
 
 
+def _build_openrouter_client(model: str, label: str) -> object | None:
+    """Build a ChatOpenAI-compatible client pointed at OpenRouter."""
+    key  = os.environ.get("OPENROUTER_API_KEY", "")
+    base = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    if not key:
+        return None
+    try:
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=model,
+            api_key=key,
+            base_url=base,
+            max_tokens=1024,
+            temperature=0.1,
+            default_headers={
+                "HTTP-Referer": "https://uprising.ai",
+                "X-Title": "PRIMA Forecast",
+            },
+        ).with_structured_output(SynthesisOutput, method="function_calling")
+    except Exception as e:
+        log.warning("OpenRouter %s client init failed: %s", label, e)
+        return None
+
+
 def _build_openai_client() -> object | None:
     key = os.environ.get("OPENAI_API_KEY", "")
     if not key:
@@ -133,7 +157,7 @@ def _build_openai_client() -> object | None:
             model="gpt-4o-mini", api_key=key, max_tokens=1024, temperature=0.1,
         ).with_structured_output(SynthesisOutput)
     except Exception as e:
-        log.warning("OpenAI client init failed: %s", e)
+        log.warning("OpenAI direct client init failed: %s", e)
         return None
 
 
@@ -147,18 +171,26 @@ def _build_gemini_client() -> object | None:
             model="gemini-1.5-flash", google_api_key=key, temperature=0.1,
         ).with_structured_output(SynthesisOutput)
     except Exception as e:
-        log.warning("Gemini client init failed: %s", e)
+        log.warning("Gemini direct client init failed: %s", e)
         return None
 
 
 def _get_clients() -> dict[str, object]:
     global _clients
     if not _clients:
-        for name, builder in [
-            ("anthropic", _build_anthropic_client),
-            ("openai",    _build_openai_client),
-            ("gemini",    _build_gemini_client),
-        ]:
+        builders = [
+            ("anthropic",      _build_anthropic_client),
+            # OpenRouter routes to GPT-4o and Gemini 2.5 Flash
+            ("gpt4o",          lambda: _build_openrouter_client("openai/gpt-4o-2024-11-20", "GPT-4o")),
+            ("gemini_flash",   lambda: _build_openrouter_client("google/gemini-2.5-flash", "Gemini-2.5-Flash")),
+        ]
+        # Fallback: direct keys if OpenRouter isn't available
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            builders += [
+                ("openai_direct",  _build_openai_client),
+                ("gemini_direct",  _build_gemini_client),
+            ]
+        for name, builder in builders:
             client = builder()
             if client is not None:
                 _clients[name] = client

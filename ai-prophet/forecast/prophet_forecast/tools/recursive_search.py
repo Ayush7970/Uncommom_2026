@@ -71,7 +71,20 @@ def generate_queries(question: str, category: str, snapshot_ts: str) -> list[str
     ql = question.lower()
 
     if cat == "sports":
-        queries.append(f"{q} result score prediction odds")
+        ql = question.lower()
+        if "tennis" in ql or "wta" in ql or "atp" in ql or "itf" in ql:
+            # For tennis: ranking + head-to-head are what matter
+            queries.append(f"{q} ranking head-to-head form {snap_year}")
+            queries.append(f"{q} WTA ATP ranking recent results")
+        elif "cricket" in ql or "test match" in ql or "county" in ql:
+            queries.append(f"{q} team ranking recent form {snap_year}")
+            queries.append(f"{q} cricket match preview head-to-head")
+        elif "who won" in ql or "who will win" in ql:
+            # Generic "who won" — search for result or standings
+            queries.append(f"{q} result winner {snap_year}")
+            queries.append(f"{q} standings prediction {snap_year}")
+        else:
+            queries.append(f"{q} result score odds {snap_year}")
     elif cat == "finance":
         queries.append(f"{q} forecast analyst prediction {snap_date}")
         queries.append(f"{q} market outlook probability")
@@ -167,7 +180,7 @@ def recursive_search(
     snapshot_ts: str,
     api_key: str | None = None,
     max_iterations: int = 2,
-    results_per_query: int = 3,
+    results_per_query: int = 5,
 ) -> list[dict]:
     """
     Run recursive web search for a market question.

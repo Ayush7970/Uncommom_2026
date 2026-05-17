@@ -134,16 +134,39 @@ def _convert_task(task: dict) -> dict | None:
 
     # Determine outcome from resolved_outcome if present
     outcome = None
+    outcomes_list = task.get("outcomes", [])
     resolved = task.get("resolved_outcome")
     if resolved:
-        outcomes_list  = task.get("outcomes", [])
         resolved_values = resolved.get("value", [])
         if outcomes_list and resolved_values:
             outcome = 1 if resolved_values[0] == outcomes_list[0] else 0
 
+    # Rewrite "Who won X vs Y?" to binary form so models know which side = YES.
+    # The YES side is always outcomes_list[0] (the first listed outcome).
+    binary_question = question
+    if outcomes_list and len(outcomes_list) >= 2:
+        yes_side = outcomes_list[0]
+        no_side  = outcomes_list[1]
+        q_lower  = question.lower()
+        # "Who won X vs Y?" → "Did [yes_side] win against [no_side]?"
+        if q_lower.startswith("who won") or q_lower.startswith("who will win"):
+            binary_question = (
+                f"Did {yes_side} win/prevail? "
+                f"(YES = {yes_side} wins, NO = {no_side} wins or other outcome) "
+                f"Original: {question}"
+            )
+        # "Who became X?" or "Which Y?" → keep but add framing
+        elif q_lower.startswith("who ") or q_lower.startswith("which "):
+            binary_question = (
+                f"Did {yes_side} win/achieve the result? "
+                f"(YES = {yes_side}, NO = anyone else) "
+                f"Original: {question}"
+            )
+        # "How many?" numerical questions — keep as-is (too ambiguous to rewrite)
+
     return {
         "market_id":       task.get("task_id", task.get("source", "unknown")),
-        "question":        question,
+        "question":        binary_question,
         "category_hint":   category_hint,
         "resolves_at":     resolves_at,
         "price_snapshots": [{"ts": snapshot_ts, "price_yes": 0.5}],
