@@ -1,0 +1,11 @@
+{
+  "calibrator_features": [
+    "logit_p_market",
+    "hours_to_close",
+    "log1p_hours",
+    "cat_sports",
+    "cat_finance",
+    "cat_politics",
+    "cat_science_tech"
+  ]
+}
