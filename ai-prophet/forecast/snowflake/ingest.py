@@ -13,7 +13,11 @@ import argparse
 import logging
 import os
 import sqlite3
-import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 log = logging.getLogger(__name__)
 
@@ -32,10 +36,19 @@ def push_to_snowflake(db_path: str) -> None:
                     "Run: pip install snowflake-snowpark-python")
         return
 
+    # Columns shared between SQLite and Snowflake (excludes 'id' and 'evidence_count')
+    # Snowflake has EVIDENCE VARIANT (JSON) which SQLite doesn't store — left NULL on ingest
+    COLS = [
+        "logged_at", "market_id", "question", "category", "time_bucket",
+        "snapshot_ts", "resolves_at", "p_market", "p_ml", "p_llm_raw",
+        "p_calibrated", "p_final", "w_t", "outcome", "brier",
+        "rationale", "confidence", "iteration", "error", "evidence",
+    ]
+    col_sql = ", ".join(COLS)
+
     # Load from SQLite
     conn_sqlite = sqlite3.connect(db_path)
-    rows = conn_sqlite.execute("SELECT * FROM forecasts").fetchall()
-    cols = [d[0] for d in conn_sqlite.execute("SELECT * FROM forecasts LIMIT 0").description]
+    rows = conn_sqlite.execute(f"SELECT {col_sql} FROM forecasts").fetchall()
     conn_sqlite.close()
 
     if not rows:
@@ -53,12 +66,14 @@ def push_to_snowflake(db_path: str) -> None:
     )
     cur = conn_sf.cursor()
 
-    placeholders = ", ".join(["%s"] * len(cols))
-    col_names    = ", ".join(cols)
-    cur.executemany(
-        f"INSERT INTO FORECASTS ({col_names}) VALUES ({placeholders})",
-        rows,
+
+    # PARSE_JSON in a VALUES clause is rejected by the connector; use SELECT instead.
+    select_exprs = ", ".join(
+        "PARSE_JSON(%s)" if c == "evidence" else "%s" for c in COLS
     )
+    insert_sql = f"INSERT INTO FORECASTS ({col_sql}) SELECT {select_exprs}"
+    for row in rows:
+        cur.execute(insert_sql, row)
     conn_sf.commit()
     cur.close()
     conn_sf.close()

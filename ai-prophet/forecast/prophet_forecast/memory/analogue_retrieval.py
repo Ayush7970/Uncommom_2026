@@ -22,6 +22,16 @@ _DB_PATH    = os.environ.get("FORECAST_DB_PATH", "forecast_log.db")
 _INDEX_PATH = "prophet_forecast/ml/artifacts/faiss_index.bin"
 _META_PATH  = "prophet_forecast/ml/artifacts/faiss_meta.json"
 
+SNOWFLAKE_CONFIG = {
+    "account": os.environ["SNOWFLAKE_ACCOUNT"],
+    "user": os.environ["SNOWFLAKE_USER"],
+    "password": os.environ["SNOWFLAKE_PASSWORD"],
+    "warehouse": os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
+    "database": os.environ.get("SNOWFLAKE_DATABASE", "MY_DB"),
+    "schema": os.environ.get("SNOWFLAKE_SCHEMA", "PUBLIC"),
+    "role": os.environ.get("SNOWFLAKE_ROLE", "SYSADMIN"),
+}
+
 # Module-level FAISS index cache
 _index   = None
 _meta    = []
@@ -127,13 +137,7 @@ def _load_or_build_index():
 def _snowflake_search(question: str, n: int) -> list[dict]:
     try:
         import snowflake.connector
-        conn = snowflake.connector.connect(
-            account=os.environ["SNOWFLAKE_ACCOUNT"],
-            user=os.environ["SNOWFLAKE_USER"],
-            password=os.environ["SNOWFLAKE_PASSWORD"],
-            database=os.environ.get("SNOWFLAKE_DATABASE", "PROPHET_FORECAST"),
-            schema=os.environ.get("SNOWFLAKE_SCHEMA", "PUBLIC"),
-        )
+        conn = snowflake.connector.connect(**SNOWFLAKE_CONFIG)
         cur = conn.cursor()
         cur.execute(
             """
@@ -168,7 +172,9 @@ def find_analogues(question: str, n: int = 3) -> list[dict]:
     """
     # Try Snowflake first
     if all(os.environ.get(k) for k in ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD"]):
+        log.info("Attempting analogue retrieval via Snowflake Cortex Search...")
         results = _snowflake_search(question, n)
+        log.info("Snowflake Cortex Search returned %d results", len(results))
         if results:
             log.info("Analogue retrieval [Snowflake]: %d results", len(results))
             return results

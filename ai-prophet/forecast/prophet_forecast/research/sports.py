@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 
 import requests
@@ -229,7 +230,12 @@ def _sports_result_search(
         no_name = raw.replace("wins", "").replace("win", "").strip()
 
     result_queries = []
-    if sport in ("soccer", "uefa"):
+    if sport in ("tennis",):
+        if team1 and team2:
+            result_queries.append(f"{team1} vs {team2} tennis result winner {snap_year}")
+            result_queries.append(f"{team1} {team2} match score {snap_year}")
+        result_queries.append(f"{clean_question} result winner {snap_year}")
+    elif sport in ("soccer", "uefa"):
         # League champion searches
         if yes_name:
             result_queries.append(f'"{yes_name}" wins {clean_question} champion {snap_year}')
@@ -378,7 +384,7 @@ def research_sports(state: ForecastState) -> dict:
     # For knowable sports results (leagues, playoffs, championships) run a
     # targeted result search — same approach that fixed politics accuracy.
     # Skip for obscure individual matches (tennis/ITF) where no data exists.
-    is_result_searchable = sport in ("soccer", "basketball", "hockey", "cricket")
+    is_result_searchable = sport in ("tennis", "soccer", "basketball", "hockey", "cricket")
     if is_result_searchable:
         result_items = _sports_result_search(
             binary_question=question,
