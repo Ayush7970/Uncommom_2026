@@ -72,9 +72,12 @@ def calibrator_node(state: ForecastState) -> dict:
     # No real price signal — skip the blend and let the model speak at full strength
     uninformative = abs(p_market - 0.5) < UNINFORMATIVE_THRESH
 
-    # --- Platt calibration (bypass when highly confident — preserve strong signal) ---
-    if confidence >= HIGH_CONFIDENCE:
-        p_calibrated = p_llm_raw   # trust the model, don't compress
+    # --- Platt calibration ---
+    # Skip when: (a) highly confident — preserve strong signal, OR
+    #            (b) uninformative market — Platt was trained on markets with real prices;
+    #                compressing p_llm here just moves toward 0.5 without justification
+    if confidence >= HIGH_CONFIDENCE or uninformative:
+        p_calibrated = p_llm_raw
     else:
         calibrator = _load_calibrator()
         if calibrator is not None:
