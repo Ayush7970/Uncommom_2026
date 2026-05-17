@@ -1,0 +1,28 @@
+time_buckets:
+  long:
+    label: "long"
+    min_hours: 96        # > 4 days
+    max_hours: null
+    w_t: 0.20            # trust our model — market is far from resolution
+    description: "More than 4 days to resolution"
+
+  medium:
+    label: "medium"
+    min_hours: 24        # 1–4 days
+    max_hours: 96
+    w_t: 0.45
+    description: "1 to 4 days to resolution"
+
+  short:
+    label: "short"
+    min_hours: 3         # 3–24 hours
+    max_hours: 24
+    w_t: 0.70
+    description: "3 to 24 hours to resolution"
+
+  urgent:
+    label: "urgent"
+    min_hours: 0         # 0–3 hours
+    max_hours: 3
+    w_t: 0.85            # trust the market — it's sharper than any LLM near resolution
+    description: "Less than 3 hours to resolution"

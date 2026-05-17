@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.pkl
+forecast_log.db
+outputs/
+.DS_Store

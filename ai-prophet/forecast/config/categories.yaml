@@ -1,0 +1,35 @@
+categories:
+  sports:
+    description: "Sports games, athlete props, championships, playoffs"
+    keywords: ["nba", "nfl", "nhl", "mlb", "soccer", "cup", "championship", "playoff",
+               "game", "match", "win", "score", "team", "player", "season", "league"]
+    ml_model: "sports"
+    research_specialist: "sports"
+
+  finance:
+    description: "Crypto prices, Fed decisions, stock prices, economic indicators"
+    keywords: ["bitcoin", "btc", "eth", "price", "fed", "rate", "gdp", "inflation",
+               "stock", "market", "dollar", "yield", "economic", "recession"]
+    ml_model: "finance"
+    research_specialist: "finance"
+
+  politics:
+    description: "Elections, legislation, geopolitical events, government decisions"
+    keywords: ["election", "senate", "president", "congress", "vote", "poll", "party",
+               "democrat", "republican", "legislation", "bill", "geopolitic", "war", "treaty"]
+    ml_model: "politics"
+    research_specialist: "politics"
+
+  science_tech:
+    description: "Drug approvals, product launches, scientific milestones, tech releases"
+    keywords: ["fda", "drug", "trial", "approval", "launch", "release", "ai", "model",
+               "patent", "research", "study", "discovery", "tech", "chip"]
+    ml_model: "science_tech"
+    research_specialist: "general"
+
+  culture:
+    description: "Movies, casting, awards, entertainment, social trends"
+    keywords: ["movie", "film", "oscar", "award", "cast", "actor", "actress", "show",
+               "album", "music", "celebrity", "grammy", "emmy", "golden globe"]
+    ml_model: "culture"
+    research_specialist: "general"

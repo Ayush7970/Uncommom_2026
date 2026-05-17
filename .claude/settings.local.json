@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(rm -rf /Users/ayushbhardwaj/Documents/GitHub/predict/ai-prophet/forecast/.git)",
+      "Bash(rm -rf /Users/ayushbhardwaj/Documents/GitHub/predict/ai-prophet/.git)"
+    ]
+  }
+}

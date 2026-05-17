@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Secrets
+.env
+*.env
+
+# ML artifacts (too large, generated on run)
+*.pkl
+*.bin
+
+# Runtime outputs
+forecast_log.db
+outputs/
+ai-prophet/outputs/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
