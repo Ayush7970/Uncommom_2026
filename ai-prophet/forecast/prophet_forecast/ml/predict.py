@@ -17,7 +17,6 @@ from .feature_extraction import (
     build_calibrator_features,
     hours_to_close,
     safe_logit,
-    safe_sigmoid,
 )
 
 log = logging.getLogger(__name__)
@@ -27,6 +26,7 @@ ARTIFACTS_DIR = os.path.join(os.path.dirname(__file__), "artifacts")
 # Lazily loaded models — populated once on first call
 _calibrator = None
 _sports_model = None
+_sports_elo_model = None   # SportsMLPredictor (4-feature Elo model)
 _culture_model = None
 _faiss_index = None
 _faiss_meta = None  # {"questions": [...], "outcomes": [...]}
@@ -34,7 +34,7 @@ _models_loaded = False
 
 
 def _load_models() -> None:
-    global _calibrator, _sports_model, _culture_model, _faiss_index, _faiss_meta, _models_loaded
+    global _calibrator, _sports_model, _sports_elo_model, _culture_model, _faiss_index, _faiss_meta, _models_loaded
     if _models_loaded:
         return
     _models_loaded = True
@@ -70,6 +70,16 @@ def _load_models() -> None:
     except Exception as exc:
         log.warning("Model loading error (non-fatal): %s", exc)
 
+    try:
+        from .sports_model import SportsMLPredictor
+        _sports_elo_model = SportsMLPredictor()
+        if _sports_elo_model.is_available():
+            log.info("Loaded SportsMLPredictor (sports_model.pkl, 4-feature Elo)")
+        else:
+            log.info("sports_model.pkl absent — SportsMLPredictor will use Elo formula fallback")
+    except Exception as exc:
+        log.warning("SportsMLPredictor init failed (non-fatal): %s", exc)
+
 
 # ---------------------------------------------------------------------------
 # Public interface
@@ -96,7 +106,7 @@ def _route(state: dict) -> float:
     h = hours_to_close(state)
 
     if "sports" in category:
-        return _sports(question, p_market, h)
+        return _sports(question, p_market, h, state)
     if "finance" in category or "economics" in category:
         return _finance(question, p_market, h)
     if "politic" in category:
@@ -111,7 +121,17 @@ def _route(state: dict) -> float:
 # Sports: logistic regression on Elo
 # ---------------------------------------------------------------------------
 
-def _sports(question: str, p_market: float, h: float) -> float:
+def _sports(question: str, p_market: float, h: float, state: dict | None = None) -> float:
+    # Layer 3→4 handoff: use Elo features pre-computed by research_sports if available
+    if state is not None and _sports_elo_model is not None:
+        for ev in (state.get("evidence") or []):
+            if ev.get("source") == "ml_features" and ev.get("ml_features"):
+                try:
+                    return _sports_elo_model.predict(ev["ml_features"])
+                except Exception as exc:
+                    log.warning("SportsMLPredictor.predict failed: %s — falling back", exc)
+                break  # only try the first ml_features entry
+
     from .external.elo import fetch_elo_diff
 
     elo_diff = fetch_elo_diff(question)  # returns float or None

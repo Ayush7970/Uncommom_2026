@@ -10,7 +10,6 @@ This function NEVER raises.
 from __future__ import annotations
 
 import logging
-import math
 import os
 
 import numpy as np

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 
 import requests
@@ -258,6 +259,28 @@ def research_sports(state: ForecastState) -> dict:
         "ml_features": ml_features,
         "relevance":   1.0,
     })
+
+    # Brave web search for injury / matchup news (no-op if no API key)
+    brave_key = os.environ.get("BRAVE_API_KEY", "")
+    if brave_key:
+        from ..tools.recursive_search import recursive_search
+        web_results = recursive_search(
+            question=question,
+            category="sports",
+            snapshot_ts=snapshot_ts,
+            api_key=brave_key,
+            max_iterations=1,
+            results_per_query=2,
+        )
+        for item in web_results:
+            body = item.get("text") or item.get("snippet") or ""
+            if body:
+                evidence.append({
+                    "source":    item["url"],
+                    "title":     item.get("title", ""),
+                    "content":   body[:1500],
+                    "relevance": 0.75,
+                })
 
     log.info("Sports research complete: %d evidence items", len(evidence))
     return {
