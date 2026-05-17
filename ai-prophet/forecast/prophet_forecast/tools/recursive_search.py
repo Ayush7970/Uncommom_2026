@@ -24,9 +24,10 @@ import trafilatura
 
 log = logging.getLogger(__name__)
 
-BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
+BRAVE_ENDPOINT  = "https://api.search.brave.com/res/v1/web/search"
+TAVILY_ENDPOINT = "https://api.tavily.com/search"
 MAX_ARTICLE_CHARS = 2500
-FETCH_TIMEOUT = 8
+FETCH_TIMEOUT  = 8
 SEARCH_TIMEOUT = 10
 
 # ---------------------------------------------------------------------------
@@ -166,10 +167,54 @@ def generate_followup_query(question: str, category: str, evidence_so_far: list[
 
 
 # ---------------------------------------------------------------------------
-# Brave search
+# Tavily search (primary — free tier, built for LLM agents)
 # ---------------------------------------------------------------------------
 
-def _brave_search(query: str, api_key: str, n_results: int = 3) -> list[dict]:
+def _tavily_search(query: str, api_key: str, n_results: int = 5) -> list[dict]:
+    """
+    Tavily returns pre-extracted content — no need to fetch articles separately.
+    Free tier: 1000 searches/month.
+    """
+    if not api_key:
+        return []
+    try:
+        resp = requests.post(
+            TAVILY_ENDPOINT,
+            json={
+                "api_key":              api_key,
+                "query":                query,
+                "max_results":          n_results,
+                "search_depth":         "advanced",
+                "include_answer":       False,
+                "include_raw_content":  False,
+            },
+            timeout=SEARCH_TIMEOUT,
+        )
+        resp.raise_for_status()
+        results = []
+        for item in resp.json().get("results", []):
+            url     = item.get("url", "")
+            title   = item.get("title", "")
+            snippet = item.get("content", "")   # Tavily gives full content here
+            if not url:
+                continue
+            if _is_low_quality(url, title, snippet):
+                log.debug("Rejected low-quality source: %s", url[:60])
+                continue
+            results.append({"url": url, "title": title, "snippet": snippet,
+                             "text": snippet})   # use content as text directly
+        log.debug("Tavily returned %d results for '%s'", len(results), query[:60])
+        return results
+    except Exception as e:
+        log.warning("Tavily search failed for '%s': %s", query[:60], e)
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Brave search (fallback — used if BRAVE_API_KEY set and Tavily fails)
+# ---------------------------------------------------------------------------
+
+def _brave_search(query: str, api_key: str, n_results: int = 5) -> list[dict]:
     if not api_key:
         return []
     try:
@@ -191,11 +236,31 @@ def _brave_search(query: str, api_key: str, n_results: int = 3) -> list[dict]:
                 log.debug("Rejected low-quality source: %s", url[:60])
                 continue
             results.append({"url": url, "title": title, "snippet": snippet})
-        log.debug("Brave returned %d quality results for '%s'", len(results), query[:60])
+        log.debug("Brave returned %d results for '%s'", len(results), query[:60])
         return results
     except Exception as e:
         log.warning("Brave search failed for '%s': %s", query[:60], e)
         return []
+
+
+def _search(query: str, n_results: int = 5) -> list[dict]:
+    """
+    Unified search: Tavily first (primary), Brave as fallback.
+    """
+    tavily_key = os.environ.get("TAVILY_API_KEY", "")
+    brave_key  = os.environ.get("BRAVE_API_KEY", "")
+
+    if tavily_key:
+        results = _tavily_search(query, tavily_key, n_results)
+        if results:
+            return results
+        log.info("Tavily returned no results — trying Brave fallback")
+
+    if brave_key:
+        return _brave_search(query, brave_key, n_results)
+
+    log.warning("No search API key set (TAVILY_API_KEY or BRAVE_API_KEY)")
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -241,9 +306,9 @@ def recursive_search(
         text        str   extracted article text (may be empty)
         iteration   int   which search round this came from
     """
-    key = api_key or os.environ.get("BRAVE_API_KEY", "")
-    if not key:
-        log.warning("No BRAVE_API_KEY — returning empty evidence")
+    # Check at least one search key is available
+    if not os.environ.get("TAVILY_API_KEY") and not os.environ.get("BRAVE_API_KEY") and not api_key:
+        log.warning("No search API key (TAVILY_API_KEY or BRAVE_API_KEY) — returning empty evidence")
         return []
 
     all_evidence: list[dict] = []
@@ -253,7 +318,6 @@ def recursive_search(
         if iteration == 0:
             batch = queries
         else:
-            # Follow-up query based on what we found
             followup = generate_followup_query(question, category, all_evidence)
             if not followup:
                 log.info("No follow-up query needed — stopping at iteration %d", iteration)
@@ -265,23 +329,26 @@ def recursive_search(
 
         for query in batch:
             log.info("  Searching: '%s'", query[:80])
-            results = _brave_search(query, key, n_results=results_per_query)
+            results = _search(query, n_results=results_per_query)
 
             for r in results:
-                text = _fetch_article(r["url"])
-                if text or r["snippet"]:
+                # Tavily pre-extracts content in r["text"] — skip expensive article fetch
+                text = r.get("text") or ""
+                if not text:
+                    text = _fetch_article(r["url"])  # Brave fallback: fetch article
+                if text or r.get("snippet"):
                     all_evidence.append({
                         "query":     query,
                         "url":       r["url"],
                         "title":     r["title"],
-                        "snippet":   r["snippet"],
+                        "snippet":   r.get("snippet", ""),
                         "text":      text,
                         "iteration": iteration,
                     })
                     if text:
-                        break  # One good article per query is enough
+                        break  # one good article per query is enough
 
-            time.sleep(0.3)  # be polite to Brave
+            time.sleep(0.2)
 
     log.info("Search complete: %d evidence items across %d queries",
              len(all_evidence), len(queries))

@@ -294,7 +294,7 @@ def research_sports(state: ForecastState) -> dict:
     clean_q     = _clean_for_search(question)
     snapshot_ts = state["snapshot_ts"]
     snap_year   = snapshot_ts[:4]
-    api_key     = os.environ.get("BRAVE_API_KEY", "")
+    api_key     = os.environ.get("TAVILY_API_KEY") or os.environ.get("BRAVE_API_KEY", "")
 
     team1_name, team2_name = _extract_teams(clean_q)
     sport, league = _detect_sport(clean_q)

@@ -103,7 +103,7 @@ def research_general(state: ForecastState) -> dict:
     category    = state.get("category", "culture")
     snapshot_ts = state["snapshot_ts"]
     snap_year   = snapshot_ts[:4]
-    api_key     = os.environ.get("BRAVE_API_KEY", "")
+    api_key     = os.environ.get("TAVILY_API_KEY") or os.environ.get("BRAVE_API_KEY", "")
 
     log.info("General research: market=%s  category=%s  query_base='%s'",
              state["market_id"], category, search_question[:60])
