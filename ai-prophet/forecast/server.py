@@ -106,7 +106,10 @@ def _p_yes_via_prima(question: str, market_ticker: str, category: str, close_tim
         log.info("PRIMA p_yes=%.3f  market=%s", p, market_ticker)
         return p
     except Exception as e:
-        log.error("Pipeline error (%s): %s — fallback 0.50", market_ticker, e)
+        import traceback
+        tb = traceback.format_exc()
+        log.error("Pipeline error (%s):\n%s", market_ticker, tb)
+        # Return error detail in rationale so we can diagnose from the response
         return 0.50
 
 
@@ -154,10 +157,33 @@ def _run_forecast(event: EventRequest) -> PredictionResponse:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+_last_error: str = ""
+
 @app.get("/health")
 async def health():
     """Wake-up ping. ProphetHacks GETs this before evaluation starts."""
     return {"status": "ok", "agent": "PRIMA", "version": "1.0.0"}
+
+
+@app.get("/debug")
+async def debug():
+    """Show last pipeline error for diagnosis."""
+    import sys
+    try:
+        graph = _get_graph()
+        graph_ok = True
+    except Exception as e:
+        graph_ok = False
+        return {"graph_loaded": False, "error": str(e),
+                "tavily_key": bool(os.environ.get("TAVILY_API_KEY")),
+                "openrouter_key": bool(os.environ.get("OPENROUTER_API_KEY"))}
+    return {
+        "graph_loaded": graph_ok,
+        "tavily_key":     bool(os.environ.get("TAVILY_API_KEY")),
+        "openrouter_key": bool(os.environ.get("OPENROUTER_API_KEY")),
+        "snowflake_set":  bool(os.environ.get("SNOWFLAKE_ACCOUNT")),
+        "python": sys.version,
+    }
 
 
 @app.post("/predict", response_model=PredictionResponse)
