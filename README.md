@@ -1,6 +1,6 @@
 <img width="1124" height="267" alt="image" src="https://github.com/user-attachments/assets/79e93f2e-7b7d-48b4-b61b-f19ff46c047c" />
-<img width="1440" height="1080" alt="image" src="https://github.com/user-attachments/assets/9c93db8a-1b6a-43f7-b70a-f01b36499999" />
-
+<!-- <img width="1440" height="1080" alt="image" src="https://github.com/user-attachments/assets/9c93db8a-1b6a-43f7-b70a-f01b36499999" /> -->
+<img width="1246" height="952" alt="image" src="https://github.com/user-attachments/assets/7efe8e45-f433-43b4-8c9e-afdb29df97d2" />
 
 
 # PRIMA -o 
