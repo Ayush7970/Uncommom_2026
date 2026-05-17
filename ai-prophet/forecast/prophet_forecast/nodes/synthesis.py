@@ -220,17 +220,23 @@ _clients: dict[str, object] = {}
 
 
 def _build_anthropic_client() -> object | None:
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    key  = os.environ.get("OPENROUTER_API_KEY", "")
+    base = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     if not key:
         return None
     try:
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
-            model=os.environ.get("SYNTHESIS_MODEL", "claude-sonnet-4-6"),
-            api_key=key, max_tokens=1024, temperature=0.1,
-        ).with_structured_output(SynthesisOutput)
+        from langchain_openai import ChatOpenAI
+        model = os.environ.get("SYNTHESIS_MODEL", "anthropic/claude-sonnet-4.6")
+        return ChatOpenAI(
+            model=model,
+            api_key=key,
+            base_url=base,
+            max_tokens=1024,
+            temperature=0.1,
+            default_headers={"HTTP-Referer": "https://uprising.ai", "X-Title": "PRIMA"},
+        ).with_structured_output(SynthesisOutput, method="function_calling")
     except Exception as e:
-        log.warning("Anthropic client init failed: %s", e)
+        log.warning("Claude via OpenRouter init failed: %s", e)
         return None
 
 

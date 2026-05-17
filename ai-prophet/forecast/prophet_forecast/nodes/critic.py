@@ -55,14 +55,18 @@ def _get_llm():
     if _llm_client is not None:
         return _llm_client
     try:
-        from langchain_anthropic import ChatAnthropic
-        model = os.environ.get("CRITIC_MODEL", "claude-haiku-4-5-20251001")
-        _llm_client = ChatAnthropic(
+        from langchain_openai import ChatOpenAI
+        key  = os.environ.get("OPENROUTER_API_KEY", "")
+        base = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        model = os.environ.get("CRITIC_MODEL", "anthropic/claude-haiku-4.5")
+        _llm_client = ChatOpenAI(
             model=model,
-            api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+            api_key=key,
+            base_url=base,
             max_tokens=512,
             temperature=0,
-        ).with_structured_output(CritiqueOutput)
+            default_headers={"HTTP-Referer": "https://uprising.ai", "X-Title": "PRIMA"},
+        ).with_structured_output(CritiqueOutput, method="function_calling")
         return _llm_client
     except Exception as e:
         log.warning("Could not init critic LLM: %s — skipping refinement", e)
