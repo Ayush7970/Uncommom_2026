@@ -66,14 +66,14 @@ def calibrator_node(state: ForecastState) -> dict:
     category   = state.get("category", "culture")
 
     # Category-specific confidence gates
-    # Culture: Claude has strong training knowledge for entertainment (TV shows, awards)
-    # Politics: web search can find election results — lower gate to let it through
     if category == "culture":
-        gate = CONFIDENCE_GATE_CULTURE
+        gate = CONFIDENCE_GATE_CULTURE   # 0.15 — Claude+search knows entertainment well
     elif category == "politics":
-        gate = CONFIDENCE_GATE_POLITICS
+        gate = CONFIDENCE_GATE_POLITICS  # 0.35 — result search finds election winners
+    elif category == "sports":
+        gate = CONFIDENCE_GATE_SPORTS    # 0.33 — result search finds league/playoff winners
     else:
-        gate = CONFIDENCE_GATE
+        gate = CONFIDENCE_GATE           # 0.40 — default for finance/science_tech
 
     # --- Gate 1: urgent bucket or very low confidence → trust market ---
     if bucket == "urgent" or confidence < gate:
