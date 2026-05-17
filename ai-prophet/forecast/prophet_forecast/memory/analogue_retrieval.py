@@ -23,13 +23,13 @@ _INDEX_PATH = "prophet_forecast/ml/artifacts/faiss_index.bin"
 _META_PATH  = "prophet_forecast/ml/artifacts/faiss_meta.json"
 
 SNOWFLAKE_CONFIG = {
-    "account": os.environ["SNOWFLAKE_ACCOUNT"],
-    "user": os.environ["SNOWFLAKE_USER"],
-    "password": os.environ["SNOWFLAKE_PASSWORD"],
+    "account":   os.environ.get("SNOWFLAKE_ACCOUNT", ""),
+    "user":      os.environ.get("SNOWFLAKE_USER", ""),
+    "password":  os.environ.get("SNOWFLAKE_PASSWORD", ""),
     "warehouse": os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
-    "database": os.environ.get("SNOWFLAKE_DATABASE", "MY_DB"),
-    "schema": os.environ.get("SNOWFLAKE_SCHEMA", "PUBLIC"),
-    "role": os.environ.get("SNOWFLAKE_ROLE", "SYSADMIN"),
+    "database":  os.environ.get("SNOWFLAKE_DATABASE", "MY_DB"),
+    "schema":    os.environ.get("SNOWFLAKE_SCHEMA", "PUBLIC"),
+    "role":      os.environ.get("SNOWFLAKE_ROLE", "SYSADMIN"),
 }
 
 # Module-level FAISS index cache
