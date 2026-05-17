@@ -13,7 +13,9 @@
       "Bash(curl -sL \"https://raw.githubusercontent.com/ai-prophet/ai-prophet-datasets/main/datasets/sample-economics/dataset.json\" -o sample-economics.json)",
       "Bash(curl -sL \"https://raw.githubusercontent.com/ai-prophet/ai-prophet-datasets/main/datasets/sample-entertainment/dataset.json\" -o sample-entertainment.json)",
       "Bash(curl -sL \"https://raw.githubusercontent.com/ai-prophet/ai-prophet-datasets/main/datasets/sample-resolved/dataset.json\" -o sample-resolved.json)",
-      "Bash(python3 -m json.tool)"
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c \"import sys,json; [print\\(json.dumps\\({'title': json.loads\\(l\\).get\\('title'\\), 'id': json.loads\\(l\\).get\\('task_id',''\\)}, indent=2\\)\\) for l in sys.stdin]\")",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

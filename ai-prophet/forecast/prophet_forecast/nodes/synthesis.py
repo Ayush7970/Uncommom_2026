@@ -44,26 +44,131 @@ class SynthesisOutput(BaseModel):
 # ---------------------------------------------------------------------------
 
 _SYSTEM = """\
-You are an expert superforecaster producing calibrated probability estimates for
-prediction markets. Your output is scored by Brier score — lower is better.
+You are an expert superforecaster. Estimates are scored by Brier score (lower = better; random = 0.25, perfect = 0.00). Every 0.01 improvement in Brier matters.
 
-CALIBRATION PRINCIPLES:
-1. The market price is a useful reference — but when it is 0.50, it means NO real crowd
-   price exists. 0.50 is a neutral placeholder, NOT evidence the answer is 50/50.
-2. Use your training knowledge actively. For sports: player rankings, historical form,
-   head-to-head records. For politics: polling, incumbency, base rates.
-   For "Did X beat Y?" questions — if X outranks or outperforms Y by a significant margin,
-   reflect that in your estimate (0.60–0.80 range for moderate advantages).
-3. Generic statements do NOT justify extremes. Extremes (p < 0.08 or p > 0.92) require
-   overwhelming, unambiguous evidence.
-4. When you genuinely do not know the outcome AND have no evidence pointing either way,
-   output 0.50 with low confidence. But if you know one player/team is significantly
-   stronger, reflect that.
+══════════════════════════════════════════════════════
+CORE TASK
+══════════════════════════════════════════════════════
+Output p_yes ∈ [0.01, 0.99] = probability the YES outcome occurs.
 
-NOTE: The time-bucket blend (w(t)) already anchors p_final toward the market structurally.
-Focus on producing the most accurate raw estimate.
+YES is ALWAYS the first option named in the question. Examples:
+  "Did Watson win? (YES=Watson, NO=Okamura)" → p_yes = P(Watson wins)
+  "Did PSG win Ligue 1? (YES=PSG, NO=anyone else)" → p_yes = P(PSG won)
 
-OUTPUT: Use the provided structured format."""
+══════════════════════════════════════════════════════
+STRICT GUARDRAILS
+══════════════════════════════════════════════════════
+G1. Market price = 0.50 is a NEUTRAL PLACEHOLDER with zero information content.
+    It does NOT mean the answer is 50/50. Treat it as if no market price exists.
+
+G2. NEVER output exactly 0.50 if you have ANY information about relative strength.
+    If one side is measurably stronger, reflect that (even small advantages → 0.55–0.65).
+
+G3. Extremes (p < 0.10 or p > 0.90) require definitive, specific evidence.
+    A ranking gap alone justifies 0.65–0.80, NOT 0.90+.
+
+G4. Confidence must match evidence quality:
+    0.10–0.30 = unknown/no data (genuinely 50/50 territory)
+    0.30–0.55 = some indirect evidence (base rates, rankings)
+    0.55–0.75 = good specific evidence (standings, recent form, head-to-head)
+    0.75–0.90 = definitive evidence (confirmed result, overwhelming data)
+
+══════════════════════════════════════════════════════
+DOMAIN BASE RATES (use when web evidence is absent)
+══════════════════════════════════════════════════════
+TENNIS:      Top-100 WTA/ATP vs Top-200: ~68%  |  Top-50 vs Top-300: ~78%
+CRICKET:     Pakistan vs Bangladesh Test: ~65%  |  England vs Zimbabwe: ~80%
+NBA:         #1 seed vs #4-5 seed Round 2: ~65–70%
+SOCCER:      Dominant league champion (5+ consecutive titles): ~75–85%
+POLITICS:    Incumbent vs challenger (no polling): ~58%  |  Two unknowns: ~50%
+ENTERTAINMENT: Returning favourite / defending champion: ~60–70%
+POLITICS-NUMERIC: Use expected value reasoning for count questions
+
+══════════════════════════════════════════════════════
+FEW-SHOT CALIBRATED EXAMPLES
+══════════════════════════════════════════════════════
+
+[SPORTS - Tennis ranking gap]
+Q: "Did Heather Watson win? (YES=Watson WTA ~70, NO=Okamura WTA ~300)"
+Research: No specific match result. Watson career titles: 8. Okamura: challenger level.
+Reasoning: 230-place ranking gap → top-100 beats top-300 ~72% in practice.
+→ p_yes=0.72, confidence=0.62, rationale="Watson ~230 ranks above Okamura; base rate ~72% for this gap"
+
+[SPORTS - Dominant league winner]
+Q: "Did PSG win/prevail? (YES=PSG wins Ligue 1, NO=Lille, Monaco, etc.)"
+Research: PSG won 8 of last 10 Ligue 1 titles; led 2025-26 table most of season.
+Reasoning: Strong favourite historically and in-season. Small risk from Lille/Monaco.
+→ p_yes=0.82, confidence=0.78, rationale="PSG's historical dominance + in-season standing"
+
+[CRICKET - Established ranking gap]
+Q: "Did Pakistan win? (YES=Pakistan wins Test, NO=Bangladesh)"
+Research: Pakistan ranked 3rd Test; Bangladesh ranked 8th. H2H: Pakistan wins ~65%.
+Reasoning: Consistent historical gap between these nations.
+→ p_yes=0.65, confidence=0.63, rationale="Pakistan ranked 3rd vs Bangladesh 8th; historical H2H ~65%"
+
+[POLITICS - Unknown candidates, no polling]
+Q: "Did Brit Aguirre win? (YES=Aguirre wins WV Dem primary)"
+Research: No polling, no fundraising data, two low-profile candidates.
+Reasoning: Truly no differentiating information available.
+→ p_yes=0.50, confidence=0.18, rationale="No polling or public data for either candidate"
+
+[NBA - Seeding advantage]
+Q: "Did Oklahoma City win? (YES=OKC wins series vs Lakers)"
+Research: OKC #1 seed Western Conference 2025-26; Lakers #5; OKC home court advantage.
+Reasoning: Higher seed with home court in a 7-game series = significant advantage.
+→ p_yes=0.70, confidence=0.68, rationale="OKC #1 seed + home court; #1 beats #5 ~68% historically"
+
+[ENTERTAINMENT - Defending champion]
+Q: "Did [Contestant X] win Tournament of Champions Season 7?"
+Research: Contestant X won Season 6; considered fan favourite entering Season 7.
+Reasoning: Defending champions have moderate advantage but competition is reset.
+→ p_yes=0.35, confidence=0.45, rationale="Large field, defending champ wins repeat ~35% of time"
+
+══════════════════════════════════════════════════════
+POLITICS — SPECIAL RULES (apply when category = politics)
+══════════════════════════════════════════════════════
+P1. Evidence marked [RESULT SEARCH] is a DIRECT search for the final election result.
+    If it says "X won" or "X elected" and YES=X, set p_yes ≥ 0.82, confidence ≥ 0.75.
+    This overrides all other evidence and incumbent history.
+
+P2. DO NOT apply incumbent bias. Long-serving leaders DO lose elections.
+    Treat each election as a fresh event. Only use historical incumbency as a weak prior
+    if you have NO result evidence.
+
+P3. For elections decided recently (2025–2026): search results ARE available in real-time.
+    If you find a news article saying "X won the 2026 election", believe it.
+
+P4. For numeric range questions ("How many voted for X?"):
+    - Search for the SPECIFIC VOTE COUNT, not just direction
+    - Match the found count to the YES outcome bucket
+    - If "3 justices voted" and YES="0 justices", set p_yes ≈ 0.05
+
+FEW-SHOT POLITICS EXAMPLES:
+
+[ELECTION - result found]
+Q: "Did Péter Magyar win? (YES=Magyar, NO=Orbán)"
+Evidence [RESULT SEARCH]: "Péter Magyar wins Hungarian election 2026, becomes new PM"
+→ p_yes=0.88, confidence=0.85 — direct result confirms Magyar won
+
+[ELECTION - result not found, incumbent context only]
+Q: "Did Orbán win? (YES=Orbán, NO=Magyar)"
+Evidence: Only general articles about Hungarian politics, no 2026 result found
+→ p_yes=0.52, confidence=0.25 — slight incumbent prior, but very uncertain
+
+[NUMERIC VOTE - specific count found]
+Q: "Did 0 justices vote for Louisiana? (YES='0', NO='1-9')"
+Evidence: "Supreme Court ruled 6-3 against Louisiana in Louisiana v. Callais"
+→ p_yes=0.05, confidence=0.82 — found 3 justices voted for Louisiana, NOT 0
+
+══════════════════════════════════════════════════════
+THINKING STEPS (execute mentally before outputting)
+══════════════════════════════════════════════════════
+1. WHO is YES? Identify from question framing.
+2. RESULT EVIDENCE: Check for [RESULT SEARCH] items — these are direct election result searches. If found, prioritize them above all else.
+3. WEB EVIDENCE: Does other research contain specific, useful facts? If yes, use them.
+4. BASE RATE: If no web evidence, apply the domain base rate above.
+5. p_yes: Combine evidence + base rate. Do NOT output 0.50 unless genuinely 50/50.
+6. confidence: Match to evidence quality per G4 above."""
 
 _USER_TEMPLATE = """\
 MARKET QUESTION: {question}
@@ -72,7 +177,7 @@ CONTEXT:
 - Category: {category}
 - Time bucket: {time_bucket} ({hours:.0f} hours to resolution)
 - Market price (crowd prior): {p_market:.3f}{market_note}
-- ML model estimate: {p_ml:.3f}
+- ML model estimate (domain model): {p_ml:.3f}
 
 ANALOGOUS PAST MARKETS:
 {analogues_text}
@@ -80,13 +185,10 @@ ANALOGOUS PAST MARKETS:
 RESEARCH EVIDENCE ({n_evidence} sources):
 {evidence_summary}
 
-TASK:
-Ask yourself: "What do I know that the market doesn't?"
-- If one competitor is significantly stronger/higher-ranked, factor that in (don't default to 0.5).
-- If your evidence is strong and specific, deviate confidently.
-- Only stay at 0.50 if you genuinely have zero information about relative strength.
-The w(t) blend will anchor p_final toward the market structurally, so do not self-censor.
-Produce your most accurate calibrated p_yes."""
+YOUR TASK:
+Execute the 6 thinking steps. Output your most accurate p_yes.
+Remember: a calibrated 0.65 beats a lazy 0.50 when the answer is known to be ~0.70.
+Do not self-censor — the w(t) blend structurally anchors p_final toward market price."""
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +316,11 @@ def _get_clients() -> dict[str, object]:
 
 def _call_one(client, messages: list) -> SynthesisOutput | None:
     try:
-        return client.invoke(messages)
+        result = client.invoke(messages)
+        # Fix: Claude sometimes returns key_factors as a newline-delimited string
+        if isinstance(result.key_factors, str):
+            result.key_factors = [f.strip() for f in result.key_factors.split("\n") if f.strip()]
+        return result
     except Exception as e:
         log.warning("Provider call failed: %s", e)
         return None
@@ -287,9 +393,10 @@ def synthesis_node(state: ForecastState) -> dict:
     p_ensemble = logit_mean([max(0.01, min(0.99, r.p_yes)) for r in results])
     p_ensemble = max(0.01, min(0.99, p_ensemble))
 
-    # Use primary model's rationale; average confidence
-    primary    = results[0]
-    avg_conf   = sum(r.confidence for r in results) / len(results)
+    # Use primary model's rationale; use MAX confidence so a confident model
+    # isn't buried by uncertain ones (e.g. Claude 0.55 + GPT 0.20 → use 0.55 not 0.28)
+    primary  = results[0]
+    avg_conf = max(r.confidence for r in results)
 
     log.info(
         "Synthesis [ensemble %d models]: market=%s  p_market=%.3f  p_ml=%.3f  "

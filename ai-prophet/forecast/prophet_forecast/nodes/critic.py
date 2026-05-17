@@ -70,26 +70,60 @@ def _get_llm():
 
 
 _SYSTEM = """\
-You are a critical reviewer of AI probability forecasts.
-Your role: decide if the current estimate needs more web research to be reliable.
+You are a calibration auditor for AI probability forecasts.
+Decide: accept the current estimate, or request targeted web refinement?
 
-ACCEPT the estimate when:
-- The evidence directly addresses the question with specific facts
-- The deviation from market price is justified by concrete evidence
-- The estimate is well-calibrated (not overconfident)
+══════════════════════════════════════════════════════
+AUTO-ACCEPT — answer "accepted" immediately if ANY condition is true:
+══════════════════════════════════════════════════════
+• The estimate is NOT 0.50 AND the rationale mentions specific facts (rankings, scores, standings)
+• The estimate is 0.45–0.55 AND confidence < 0.35 — model is genuinely uncertain; more search won't help
+• The category is sports AND the question involves obscure low-tier athletes (ITF, local leagues, challengers with no web presence)
+• The evidence already contains specific relevant data (player rankings, team standings, recent match scores)
 
-REQUEST REFINEMENT when:
-- The estimate deviates >15% from market AND the market price is NOT near 0.50, and the evidence is thin or generic
-- There are specific unanswered questions that a targeted web search could resolve
-- The rationale is vague ("X is likely" without citing specific facts)
+══════════════════════════════════════════════════════
+REQUEST REFINEMENT — only when ALL conditions are met:
+══════════════════════════════════════════════════════
+• Confidence < 0.50 (model is uncertain)
+• The estimate is 0.45–0.55 AND you suspect useful data EXISTS online
+• You can write 1-2 HIGHLY SPECIFIC queries (player name + date + tournament, not "more info about X")
+• The rationale is purely generic ("player X is a good player") with no concrete facts
 
-IMPORTANT: When the market price is near 0.50 (within ±0.05), the crowd has NO real price signal —
-this means 0.50 is just a neutral placeholder, NOT evidence that the answer is 50/50.
-In that case, DO NOT penalize the estimate for deviating from 0.50. The model's estimate
-can and should deviate if it has any specific evidence (e.g., player rankings, team form).
+NEVER request refinement for:
+• Obscure ITF/Challenger matches where rankings aren't publicly available
+• Questions where the estimate already uses base rates or rankings
+• Confident estimates (use the auto-accept rules above)
 
-Only request refinement if you can write specific, targeted search queries.
-Generic queries like "more information about X" are useless. Be precise."""
+IMPORTANT: market price = 0.50 is a NEUTRAL PLACEHOLDER (no crowd data).
+Never penalize deviation from 0.50. The model should deviate based on relative strength.
+
+══════════════════════════════════════════════════════
+FEW-SHOT EXAMPLES
+══════════════════════════════════════════════════════
+
+[ACCEPT — confident estimate with reasoning]
+Q: "Did OKC win vs Lakers?"  estimate=0.70  conf=0.68
+Rationale: "OKC #1 seed, home court, 65+ wins this season"
+→ ACCEPTED. Confident, concrete reasoning. No refinement needed.
+
+[ACCEPT — genuinely uncertain, don't waste search]
+Q: "Did Najzer win vs Ebster ITF W15 Klagenfurt R32?"  estimate=0.50  conf=0.15
+Rationale: "Cannot find information about these players"
+→ ACCEPTED. Obscure ITF match. No useful data exists online. Accept 0.50.
+
+[ACCEPT — market placeholder, model used base rate correctly]
+Q: "Did Watson win vs Okamura WTA Challenger?"  estimate=0.72  conf=0.62  market=0.50
+→ ACCEPTED. Deviation from 0.50 is appropriate. Market is uninformative. Good base-rate estimate.
+
+[REFINE — specific gap, searchable fact exists]
+Q: "Did Bangladesh win vs Pakistan Test cricket?"  estimate=0.50  conf=0.25
+Rationale: "Not sure about relative strength, no evidence found"
+→ REFINE with: ["Pakistan Bangladesh Test cricket May 2026 result", "Pakistan Bangladesh ICC Test ranking 2026"]
+
+[REFINE — league winner, specific standings available]
+Q: "Did PSG win Ligue 1?"  estimate=0.50  conf=0.20
+Rationale: "No web results found"
+→ REFINE with: ["Ligue 1 2025-26 final standings winner champion", "PSG Ligue 1 2026 season result"]"""
 
 _USER_TEMPLATE = """\
 MARKET QUESTION: {question}
@@ -124,6 +158,8 @@ def critic_node(state: ForecastState) -> dict:
     p_market     = state.get("p_market", 0.5)
     p_iterations = list(state.get("p_iterations", [p_llm_raw]))
 
+    confidence = state.get("confidence") or 0.0
+
     # Rule 3: hard cap on iterations
     if iteration >= MAX_ITERATIONS:
         log.info("Critic: max iterations (%d) reached — accepting", MAX_ITERATIONS)
@@ -131,6 +167,18 @@ def critic_node(state: ForecastState) -> dict:
             "critique":   {"accepted": True, "reason": "max iterations reached"},
             "new_queries": [],
         }
+
+    # Fast-path: auto-accept without calling LLM (saves ~$0.002/market and ~8s)
+    # Case A: model is already confident enough
+    if confidence >= 0.60:
+        log.info("Critic [auto-accept, conf=%.2f]: market=%s", confidence, state["market_id"])
+        return {"critique": {"accepted": True, "reason": f"confident enough (conf={confidence:.2f})"}, "new_queries": []}
+
+    # Case B: model is genuinely uncertain and estimate is near 0.5 — more search won't help
+    if confidence < 0.35 and abs(p_llm_raw - 0.5) < 0.06:
+        log.info("Critic [auto-accept, uncertain+neutral]: market=%s  p=%.3f  conf=%.2f",
+                 state["market_id"], p_llm_raw, confidence)
+        return {"critique": {"accepted": True, "reason": "genuinely uncertain, near 0.5 — refinement won't help"}, "new_queries": []}
 
     # Rule 4: variance check (before calling LLM — saves cost)
     if len(p_iterations) >= 2:

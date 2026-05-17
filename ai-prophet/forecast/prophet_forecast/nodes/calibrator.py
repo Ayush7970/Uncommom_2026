@@ -21,7 +21,10 @@ log = logging.getLogger(__name__)
 
 _ARTIFACTS_DIR = os.path.join(os.path.dirname(__file__), "..", "ml", "artifacts")
 
-CONFIDENCE_GATE        = 0.40   # below this → output p_market
+CONFIDENCE_GATE          = 0.40  # default: below this → output p_market
+CONFIDENCE_GATE_CULTURE  = 0.15  # culture: Claude+search has strong entertainment knowledge
+CONFIDENCE_GATE_SPORTS   = 0.33  # sports: result search finds league/playoff winners
+CONFIDENCE_GATE_POLITICS = 0.35  # politics: result search finds election winners
 UNINFORMATIVE_THRESH   = 0.01   # |p_market - 0.5| < this → market is useless anchor
 HIGH_CONFIDENCE        = 0.65   # above this → bypass Platt compression
 SHARPEN_CONFIDENCE_MIN = 0.65
@@ -60,10 +63,21 @@ def calibrator_node(state: ForecastState) -> dict:
     w_t        = state.get("w_t", 0.30)
     confidence = state.get("confidence") or 0.0
     bucket     = state.get("time_bucket", "long")
+    category   = state.get("category", "culture")
+
+    # Category-specific confidence gates
+    if category == "culture":
+        gate = CONFIDENCE_GATE_CULTURE   # 0.15 — Claude+search knows entertainment well
+    elif category == "politics":
+        gate = CONFIDENCE_GATE_POLITICS  # 0.35 — result search finds election winners
+    elif category == "sports":
+        gate = CONFIDENCE_GATE_SPORTS    # 0.33 — result search finds league/playoff winners
+    else:
+        gate = CONFIDENCE_GATE           # 0.40 — default for finance/science_tech
 
     # --- Gate 1: urgent bucket or very low confidence → trust market ---
-    if bucket == "urgent" or confidence < CONFIDENCE_GATE:
-        reason = "urgent" if bucket == "urgent" else f"low_conf={confidence:.2f}"
+    if bucket == "urgent" or confidence < gate:
+        reason = "urgent" if bucket == "urgent" else f"low_conf={confidence:.2f}(gate={gate:.2f}/{category})"
         log.info("Gate [%s]: market=%s → p_final=p_market=%.3f",
                  reason, state["market_id"], p_market)
         return {"p_calibrated": p_market, "p_final": p_market}
