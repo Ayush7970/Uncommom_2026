@@ -1,10 +1,14 @@
 """
 PRIMA — ProphetHacks Forecast Endpoint
-FastAPI server that wraps the full PRIMA LangGraph pipeline.
+FastAPI server wrapping the full PRIMA LangGraph pipeline.
 
-Endpoints:
-  GET  /health   → wake-up ping (Render free tier needs this)
-  POST /predict  → full PRIMA forecast (router → research → ensemble → calibrator)
+ProphetHacks contract:
+  GET  /health   → {"status": "ok"}
+  POST /predict  → {"probabilities": [{"market": str, "probability": float}]}
+
+Each POST contains ONE binary market (market_ticker = one outcome).
+ProphetHacks sends N requests (one per outcome) and expects probabilities
+that can be used as-is — no requirement to sum to 1 across requests.
 
 Deploy on Render:
   Build command : pip install -r forecast/requirements.txt
@@ -22,10 +26,7 @@ from datetime import UTC, datetime
 
 from dotenv import load_dotenv
 
-# ── Load .env (works locally; on Render use env var dashboard) ───────────────
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
-
-# ── Ensure prophet_forecast package is importable ───────────────────────────
 sys.path.insert(0, os.path.dirname(__file__))
 
 from fastapi import FastAPI
@@ -40,110 +41,149 @@ log = logging.getLogger("prima.server")
 app = FastAPI(title="PRIMA Forecast Agent", version="1.0.0")
 
 
-# ── Request / Response models (ProphetHacks contract) ────────────────────────
+# ── Request / Response models ─────────────────────────────────────────────────
 
 class EventRequest(BaseModel):
-    event_ticker: str
+    """ProphetHacks / ProphetArena event input shape."""
+    event_ticker:  str
     market_ticker: str
-    title: str
-    subtitle: str | None = None
-    description: str | None = None
-    category: str
-    rules: str | None = None
-    close_time: str
+    title:         str
+    subtitle:      str | None = None
+    description:   str | None = None
+    category:      str
+    rules:         str | None = None
+    close_time:    str
+    # Optional: list of outcome labels for this event (not always sent)
+    outcomes:      list[str] | None = None
+
+
+class OutcomeProbability(BaseModel):
+    market:      str    # outcome label, e.g. "Lakers" or "YES"
+    probability: float  # p ∈ [0, 1]
 
 
 class PredictionResponse(BaseModel):
-    p_yes: float
-    rationale: str
+    """ProphetHacks response format."""
+    probabilities: list[OutcomeProbability]
 
 
-# ── Lazy-load the LangGraph pipeline (avoids slow import on health checks) ───
+# ── Lazy-load the LangGraph pipeline ─────────────────────────────────────────
 
 _graph = None
 
 def _get_graph():
     global _graph
     if _graph is None:
-        log.info("Loading PRIMA forecast graph...")
+        log.info("Loading PRIMA forecast graph ...")
         from prophet_forecast.graph import forecast_graph
         _graph = forecast_graph
-        log.info("PRIMA graph loaded.")
+        log.info("PRIMA graph ready.")
     return _graph
 
 
-# ── Core forecast logic ──────────────────────────────────────────────────────
+# ── Core forecast logic ───────────────────────────────────────────────────────
 
-def _build_question(event: EventRequest) -> str:
-    """Combine title + subtitle into a single clear question."""
-    q = event.title.strip()
-    if event.subtitle:
-        q = f"{q} ({event.subtitle.strip()})"
-    return q
-
-
-def _run_prima(event: EventRequest) -> PredictionResponse:
-    """
-    Run the full PRIMA 8-layer pipeline for one event.
-    Falls back to p_yes=0.50 if the pipeline raises.
-    """
-    question = _build_question(event)
-
-    # Build snapshot: treat now as prediction time
-    snapshot_ts = datetime.now(UTC).isoformat()
-
+def _p_yes_via_prima(question: str, market_ticker: str, category: str, close_time: str) -> float:
+    """Run the full PRIMA pipeline and return p_yes for this binary market."""
     state_in = {
-        "market_id":          event.market_ticker,
-        "question":           question,
-        "p_market":           0.50,          # no market price from ProphetHacks
-        "snapshot_ts":        snapshot_ts,
-        "resolves_at":        event.close_time,
-        "category_hint":      event.category.lower() if event.category else None,
-        "evidence":           [],
+        "market_id":           market_ticker,
+        "question":            question,
+        "p_market":            0.50,
+        "snapshot_ts":         datetime.now(UTC).isoformat(),
+        "resolves_at":         close_time,
+        "category_hint":       category.lower() if category else None,
+        "evidence":            [],
         "search_queries_used": [],
-        "p_iterations":       [],
-        "new_queries":        [],
-        "iteration":          0,
-        "trace_id":           str(uuid.uuid4()),
+        "p_iterations":        [],
+        "new_queries":         [],
+        "iteration":           0,
+        "trace_id":            str(uuid.uuid4()),
     }
-
     try:
-        graph  = _get_graph()
-        result = graph.invoke(state_in)
-        p_yes  = float(result.get("p_final", 0.50))
-        p_yes  = max(0.01, min(0.99, p_yes))
-        rationale = result.get("rationale") or "PRIMA ensemble forecast."
-        log.info("Forecast OK: %s  p_yes=%.3f", event.market_ticker, p_yes)
-        return PredictionResponse(p_yes=p_yes, rationale=rationale)
-
+        result = _get_graph().invoke(state_in)
+        p = float(result.get("p_final", 0.50))
+        p = max(0.01, min(0.99, p))
+        log.info("PRIMA p_yes=%.3f  market=%s", p, market_ticker)
+        return p
     except Exception as e:
-        log.error("Pipeline error for %s: %s — returning 0.50 fallback", event.market_ticker, e)
-        return PredictionResponse(p_yes=0.50, rationale=f"Pipeline error: {e}")
+        log.error("Pipeline error (%s): %s — fallback 0.50", market_ticker, e)
+        return 0.50
 
 
-# ── Endpoints ────────────────────────────────────────────────────────────────
+def _run_forecast(event: EventRequest) -> PredictionResponse:
+    """
+    Build the probability list for the event.
+
+    ProphetHacks sends one request per binary market (market_ticker).
+    We run PRIMA for this specific outcome and return it in the
+    probabilities list format.
+
+    If the event has multiple outcomes provided, we handle all of them
+    with normalised probabilities. Otherwise we treat it as binary YES/NO.
+    """
+    title    = event.title.strip()
+    subtitle = f" ({event.subtitle.strip()})" if event.subtitle else ""
+    question = f"{title}{subtitle}"
+
+    outcomes = event.outcomes or []
+
+    if len(outcomes) >= 2:
+        # Multi-outcome event: get p_yes for each outcome as "Did X win?"
+        raw_probs: dict[str, float] = {}
+        for outcome in outcomes:
+            q = f"Did {outcome} win/prevail? (YES={outcome}) Original: {question}"
+            p = _p_yes_via_prima(q, f"{event.market_ticker}_{outcome}", event.category, event.close_time)
+            raw_probs[outcome] = p
+
+        # Normalise so they sum to 1.0
+        total = sum(raw_probs.values()) or 1.0
+        probs = [
+            OutcomeProbability(market=k, probability=round(v / total, 6))
+            for k, v in raw_probs.items()
+        ]
+    else:
+        # Binary YES/NO market (most common in ProphetHacks)
+        p = _p_yes_via_prima(question, event.market_ticker, event.category, event.close_time)
+        probs = [
+            OutcomeProbability(market="YES", probability=round(p, 6)),
+            OutcomeProbability(market="NO",  probability=round(1.0 - p, 6)),
+        ]
+
+    return PredictionResponse(probabilities=probs)
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    """Wake-up ping. ProphetHacks GETs this before starting evaluation."""
+    """Wake-up ping. ProphetHacks GETs this before evaluation starts."""
     return {"status": "ok", "agent": "PRIMA", "version": "1.0.0"}
 
 
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(event: EventRequest) -> PredictionResponse:
+async def predict_endpoint(event: EventRequest) -> PredictionResponse:
     """
-    Receive a market event, run PRIMA pipeline, return p_yes.
-    Real evaluation allows up to 10 minutes — pipeline typically takes 2-4 min.
+    Receive one market event, run PRIMA, return probabilities.
+    ProphetHacks real evaluation allows up to 10 min — pipeline ~2-4 min.
     """
-    log.info("POST /predict  market=%s  title=%s", event.market_ticker, event.title[:60])
-
-    # Run pipeline in a thread so we don't block the event loop
-    loop   = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, _run_prima, event)
-    return result
+    log.info("POST /predict  ticker=%s  title=%.60s", event.market_ticker, event.title)
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _run_forecast, event)
 
 
-# ── Local dev entrypoint ─────────────────────────────────────────────────────
+# ── Local predict function (for: prophet forecast predict --local) ────────────
+
+def predict(event: dict) -> dict:
+    """
+    Local mode entry point used by `prophet forecast predict --local`.
+    Accepts full event dict, returns probabilities list.
+    """
+    req    = EventRequest(**event)
+    result = _run_forecast(req)
+    return {"probabilities": [p.model_dump() for p in result.probabilities]}
+
+
+# ── Dev entrypoint ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
