@@ -48,13 +48,20 @@ You are an expert superforecaster producing calibrated probability estimates for
 prediction markets. Your output is scored by Brier score — lower is better.
 
 CALIBRATION PRINCIPLES:
-1. The market price is a useful reference — but your job is to find where it is WRONG.
-2. Generic statements do NOT justify deviation. You need specific, concrete facts.
-3. Extremes (p < 0.08 or p > 0.92) require overwhelming, unambiguous evidence.
-4. Consider base rates for similar historical events — use analogues if provided.
+1. The market price is a useful reference — but when it is 0.50, it means NO real crowd
+   price exists. 0.50 is a neutral placeholder, NOT evidence the answer is 50/50.
+2. Use your training knowledge actively. For sports: player rankings, historical form,
+   head-to-head records. For politics: polling, incumbency, base rates.
+   For "Did X beat Y?" questions — if X outranks or outperforms Y by a significant margin,
+   reflect that in your estimate (0.60–0.80 range for moderate advantages).
+3. Generic statements do NOT justify extremes. Extremes (p < 0.08 or p > 0.92) require
+   overwhelming, unambiguous evidence.
+4. When you genuinely do not know the outcome AND have no evidence pointing either way,
+   output 0.50 with low confidence. But if you know one player/team is significantly
+   stronger, reflect that.
 
 NOTE: The time-bucket blend (w(t)) already anchors p_final toward the market structurally.
-You do NOT need to do that yourself — focus on producing the most accurate raw estimate.
+Focus on producing the most accurate raw estimate.
 
 OUTPUT: Use the provided structured format."""
 
@@ -64,7 +71,7 @@ MARKET QUESTION: {question}
 CONTEXT:
 - Category: {category}
 - Time bucket: {time_bucket} ({hours:.0f} hours to resolution)
-- Market price (crowd prior): {p_market:.3f}
+- Market price (crowd prior): {p_market:.3f}{market_note}
 - ML model estimate: {p_ml:.3f}
 
 ANALOGOUS PAST MARKETS:
@@ -75,8 +82,10 @@ RESEARCH EVIDENCE ({n_evidence} sources):
 
 TASK:
 Ask yourself: "What do I know that the market doesn't?"
-If your evidence is strong and specific, deviate confidently — the w(t) blend will
-anchor the final output to the market structurally, so do not self-censor here.
+- If one competitor is significantly stronger/higher-ranked, factor that in (don't default to 0.5).
+- If your evidence is strong and specific, deviate confidently.
+- Only stay at 0.50 if you genuinely have zero information about relative strength.
+The w(t) blend will anchor p_final toward the market structurally, so do not self-censor.
 Produce your most accurate calibrated p_yes."""
 
 
@@ -237,12 +246,15 @@ def synthesis_node(state: ForecastState) -> dict:
     # Inject analogue context
     analogues_text = _build_analogues_text(state["question"], category)
 
+    market_note = "  ← no real crowd price (neutral placeholder)" if abs(p_market - 0.5) < 0.05 else ""
+
     user_msg_str = _USER_TEMPLATE.format(
         question         = state["question"],
         category         = category,
         time_bucket      = bucket,
         hours            = hours,
         p_market         = p_market,
+        market_note      = market_note,
         p_ml             = p_ml,
         n_evidence       = len(search_ev),
         evidence_summary = evidence_summary[:4000],
