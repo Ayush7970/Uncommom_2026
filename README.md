@@ -1,4 +1,5 @@
-# PRIMA -o | Prediction-market Reasoning Infrastructure for Multi-trial Agents
+# PRIMA -o 
+# Prediction-market Reasoning Infrastructure for Multi-trial Agents
 
 Orchestrated via LangGraph, built upon Prophet Arena & Murphy's BLF systems, we develop 
 what neither does alone: route by domain, refine by evidence, know when to trust the 
