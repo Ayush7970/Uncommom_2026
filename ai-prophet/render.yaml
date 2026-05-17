@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: prima-forecast
+    env: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r forecast/requirements.txt
+    startCommand: cd forecast && uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: BRAVE_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: LANGCHAIN_API_KEY
+        sync: false
+      - key: LANGCHAIN_TRACING_V2
+        value: "true"
+      - key: LANGCHAIN_PROJECT
+        value: prima-forecast
