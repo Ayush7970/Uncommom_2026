@@ -2,7 +2,6 @@
 
 Downloaded from: https://github.com/ai-prophet/ai-prophet-datasets/tree/main/datasets
 
-
 ## Available Datasets
 
 | Name | File | Tasks | Has Outcomes | Best For |
