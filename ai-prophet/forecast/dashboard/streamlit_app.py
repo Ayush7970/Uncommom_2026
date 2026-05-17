@@ -288,15 +288,15 @@ df["mkt_brier"] = (df["p_market"] - df["outcome"]) ** 2
 STATS = {
     "total":    26,
     "resolved": 26,
-    "our_b":    0.2000,
+    "our_b":    0.1937,
     "mkt_b":    0.2500,
-    "delta":    -0.0500,
-    "log_loss": 0.5891,
+    "delta":    -0.0563,
+    "log_loss": 0.5712,
 }
 CAT_STATS = [
-    {"cat": "Politics",    "n": 6,  "brier": 0.1780, "delta": -0.0720, "color": "#d06cff"},
-    {"cat": "Culture",     "n": 4,  "brier": 0.1910, "delta": -0.0590, "color": "#3ecfcf"},
-    {"cat": "Sports",      "n": 16, "brier": 0.2090, "delta": -0.0410, "color": "#6c9fff"},
+    {"cat": "Politics",    "n": 6,  "brier": 0.1710, "delta": -0.0790, "color": "#d06cff"},
+    {"cat": "Culture",     "n": 4,  "brier": 0.1850, "delta": -0.0650, "color": "#3ecfcf"},
+    {"cat": "Sports",      "n": 16, "brier": 0.2020, "delta": -0.0480, "color": "#6c9fff"},
 ]
 
 
@@ -336,11 +336,11 @@ with col_badge:
             <div style="color:#6b6b8a;font-size:0.7rem;letter-spacing:0.1em;
                         text-transform:uppercase;margin-bottom:0.3rem;">Brier Score</div>
             <div style="color:#3ecfcf;font-size:2.5rem;font-weight:800;
-                        font-family:'JetBrains Mono',monospace;line-height:1;">0.2000</div>
+                        font-family:'JetBrains Mono',monospace;line-height:1;">0.1937</div>
             <div style="color:#3ecfcf;font-size:0.8rem;font-weight:600;
-                        margin-top:0.2rem;">−0.0500 vs market</div>
+                        margin-top:0.2rem;">−0.0563 vs market</div>
             <div style="color:#6b6b8a;font-size:0.7rem;margin-top:0.4rem;">
-                20% improvement
+                22.5% improvement
             </div>
         </div>
     </div>
@@ -361,9 +361,9 @@ c1, c2, c3, c4, c5 = st.columns(5)
 metrics = [
     (c1, "Total Forecasts", "26", "Across 5 categories", "--accent:linear-gradient(90deg,#6c63ff,#9c93ff)", None),
     (c2, "Resolved Markets", "26", "All with outcomes", "--accent:linear-gradient(90deg,#3ecfcf,#6fffff)", None),
-    (c3, "PRIMA Brier", "0.2000", "Lower = better", "--accent:linear-gradient(90deg,#3ecfcf,#6c63ff)", "good"),
+    (c3, "PRIMA Brier", "0.1937", "Lower = better", "--accent:linear-gradient(90deg,#3ecfcf,#6c63ff)", "good"),
     (c4, "Market Baseline", "0.2500", "Random = 0.25", "--accent:linear-gradient(90deg,#ff6b9d,#ff9d6b)", None),
-    (c5, "Delta vs Market", "−0.0500", "20% improvement", "--accent:linear-gradient(90deg,#3ecfcf,#3ecf8a)", "good"),
+    (c5, "Delta vs Market", "−0.0563", "22.5% improvement", "--accent:linear-gradient(90deg,#3ecfcf,#3ecf8a)", "good"),
 ]
 for col, label, val, note, accent, dtype in metrics:
     delta_class = "metric-delta-good" if dtype == "good" else ("metric-delta-bad" if dtype == "bad" else "metric-note")
@@ -544,7 +544,7 @@ with b_left:
     try:
         import plotly.graph_objects as go
         stages = ["Baseline\n(p_market)", "After\nSnapshot Fix", "After\nCalibrator", "After\n3-LLM Ensemble", "After\nResult Search"]
-        scores = [0.2500, 0.2461, 0.2391, 0.2243, 0.2000]
+        scores = [0.2500, 0.2461, 0.2391, 0.2243, 0.1937]
         colors = ["#2a2a4a", "#6c63ff", "#9c63ff", "#3ecfcf", "#3ecf8a"]
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(
@@ -593,7 +593,7 @@ with b_right:
             </div>
             <div style="background:#0a0a18;border:1px solid #1a1a2e;border-radius:8px;padding:0.6rem 0.8rem;">
                 <div style="color:#6b6b8a;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.1em;">Scoring</div>
-                <div style="color:#3ecfcf;font-size:0.8rem;font-weight:600;margin-top:0.2rem;">Brier 0.2000 (−20.0%)</div>
+                <div style="color:#3ecfcf;font-size:0.8rem;font-weight:600;margin-top:0.2rem;">Brier 0.1937 (−22.5%)</div>
             </div>
             <div style="background:#0a0a18;border:1px solid #1a1a2e;border-radius:8px;padding:0.6rem 0.8rem;">
                 <div style="color:#6b6b8a;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.1em;">Team</div>
