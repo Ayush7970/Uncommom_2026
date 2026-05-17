@@ -3,7 +3,17 @@
     "allow": [
       "Bash(git add *)",
       "Bash(rm -rf /Users/ayushbhardwaj/Documents/GitHub/predict/ai-prophet/forecast/.git)",
-      "Bash(rm -rf /Users/ayushbhardwaj/Documents/GitHub/predict/ai-prophet/.git)"
+      "Bash(rm -rf /Users/ayushbhardwaj/Documents/GitHub/predict/ai-prophet/.git)",
+      "Bash(git commit *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/ai-prophet/ai-prophet-datasets/main/datasets/sample-sports/dataset.json\" -o sample-sports.json)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/ai-prophet/ai-prophet-datasets/main/datasets/sample-economics/dataset.json\" -o sample-economics.json)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/ai-prophet/ai-prophet-datasets/main/datasets/sample-entertainment/dataset.json\" -o sample-entertainment.json)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/ai-prophet/ai-prophet-datasets/main/datasets/sample-resolved/dataset.json\" -o sample-resolved.json)",
+      "Bash(python3 -m json.tool)"
     ]
   }
 }

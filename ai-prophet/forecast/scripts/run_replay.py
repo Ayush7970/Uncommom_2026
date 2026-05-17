@@ -111,6 +111,8 @@ _NAMED_DATASETS = {
 
 def _convert_task(task: dict) -> dict | None:
     """Convert ai-prophet-datasets tasks.jsonl format → our replay format."""
+    from datetime import timedelta
+
     question = task.get("title", "")
     if not question:
         return None
@@ -121,14 +123,22 @@ def _convert_task(task: dict) -> dict | None:
 
     category_hint = task.get("metadata", {}).get("category", "").lower() or None
 
+    # Simulate being 48 hours before the market closes.
+    # Using datetime.now() would make all markets "urgent" (already closed).
+    try:
+        resolves_dt  = datetime.fromisoformat(resolves_at.replace("Z", "+00:00"))
+        snapshot_dt  = resolves_dt - timedelta(hours=48)
+        snapshot_ts  = snapshot_dt.isoformat()
+    except Exception:
+        snapshot_ts  = resolves_at  # fallback
+
     # Determine outcome from resolved_outcome if present
     outcome = None
     resolved = task.get("resolved_outcome")
     if resolved:
-        outcomes_list = task.get("outcomes", [])
+        outcomes_list  = task.get("outcomes", [])
         resolved_values = resolved.get("value", [])
         if outcomes_list and resolved_values:
-            # First outcome in the list = YES
             outcome = 1 if resolved_values[0] == outcomes_list[0] else 0
 
     return {
@@ -136,7 +146,7 @@ def _convert_task(task: dict) -> dict | None:
         "question":        question,
         "category_hint":   category_hint,
         "resolves_at":     resolves_at,
-        "price_snapshots": [{"ts": datetime.now(UTC).isoformat(), "price_yes": 0.5}],
+        "price_snapshots": [{"ts": snapshot_ts, "price_yes": 0.5}],
         "outcome":         outcome,
     }
 
@@ -198,9 +208,6 @@ def run_market(market: dict) -> list[dict]:
     """Run the forecast graph for every snapshot of a market. Returns result rows."""
     rows = []
     outcome = market.get("outcome")
-    if outcome is None:
-        log.warning("Skipping %s — no outcome (not yet resolved)", market["market_id"])
-        return rows
 
     for snap in market.get("price_snapshots", []):
         state_in = {
@@ -265,7 +272,7 @@ def main() -> None:
         all_rows.extend(run_market(market))
 
     if not all_rows:
-        log.error("No results — check dataset format or that markets have outcomes.")
+        log.error("No results — all markets were skipped.")
         sys.exit(1)
 
     # Write CSV
@@ -277,8 +284,16 @@ def main() -> None:
         writer.writerows(all_rows)
     log.info("Forecasts written to %s", csv_path)
 
-    # Print summary + save calibration plot
-    summarise(all_rows, output_dir=args.output_dir)
+    # Only compute Brier if outcomes are available
+    rows_with_outcomes = [r for r in all_rows if r.get("outcome") is not None]
+    if rows_with_outcomes:
+        summarise(rows_with_outcomes, output_dir=args.output_dir)
+    else:
+        log.info("No outcomes available — Brier score skipped. Predictions saved to %s", csv_path)
+        print(f"\n{'='*60}")
+        print(f"  PREDICTIONS ONLY ({len(all_rows)} forecasts — no outcomes yet)")
+        print(f"  Results saved to: {csv_path}")
+        print(f"{'='*60}\n")
 
 
 if __name__ == "__main__":

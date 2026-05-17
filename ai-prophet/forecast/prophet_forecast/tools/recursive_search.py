@@ -30,6 +30,29 @@ FETCH_TIMEOUT = 8
 SEARCH_TIMEOUT = 10
 
 # ---------------------------------------------------------------------------
+# Source quality deny-list (§D.3: forecast bots actively degrade Brier)
+# ---------------------------------------------------------------------------
+_DENY_DOMAINS = {
+    "priceforecastbot.com", "walletinvestor.com", "cryptopredictions.com",
+    "longforecast.com", "coinpriceforecast.com", "stockforecasttoday.com",
+    "priceprediction.net", "digitalcoinprice.com", "telegaon.com",
+    "ai-forex-trading.com", "fxleaders.com",
+}
+_DENY_PATTERNS = [
+    "ai predicts", "chatgpt forecasts", "ai forecast", "bot predicts",
+    "price prediction 2025", "price prediction 2026", "ai-generated",
+]
+
+def _is_low_quality(url: str, title: str, snippet: str) -> bool:
+    """Return True if this source should be rejected (§D.3)."""
+    url_lower = url.lower()
+    for domain in _DENY_DOMAINS:
+        if domain in url_lower:
+            return True
+    combined = (title + " " + snippet).lower()
+    return any(pat in combined for pat in _DENY_PATTERNS)
+
+# ---------------------------------------------------------------------------
 # Query generation (category-aware)
 # ---------------------------------------------------------------------------
 
@@ -98,13 +121,16 @@ def _brave_search(query: str, api_key: str, n_results: int = 3) -> list[dict]:
         resp.raise_for_status()
         results = []
         for item in resp.json().get("web", {}).get("results", []):
-            if item.get("url"):
-                results.append({
-                    "url":     item["url"],
-                    "title":   item.get("title", ""),
-                    "snippet": item.get("description", ""),
-                })
-        log.debug("Brave returned %d results for '%s'", len(results), query[:60])
+            url     = item.get("url", "")
+            title   = item.get("title", "")
+            snippet = item.get("description", "")
+            if not url:
+                continue
+            if _is_low_quality(url, title, snippet):
+                log.debug("Rejected low-quality source: %s", url[:60])
+                continue
+            results.append({"url": url, "title": title, "snippet": snippet})
+        log.debug("Brave returned %d quality results for '%s'", len(results), query[:60])
         return results
     except Exception as e:
         log.warning("Brave search failed for '%s': %s", query[:60], e)
