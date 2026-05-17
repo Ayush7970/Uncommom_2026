@@ -56,47 +56,95 @@ def _is_low_quality(url: str, title: str, snippet: str) -> bool:
 # Query generation (category-aware)
 # ---------------------------------------------------------------------------
 
+def _clean_for_search(question: str) -> str:
+    """
+    Strip binary-rewriting preamble so Brave gets a clean, natural query.
+
+    Rewrites like "Did Péter Magyar win? (YES=Magyar, NO=Orbán) Original: Who became PM?"
+    are reduced to "Who became PM?" for search purposes.
+    """
+    # Extract everything after "Original:" if present
+    if "Original:" in question:
+        return question.split("Original:", 1)[1].strip()
+    # Strip "(YES = ..., NO = ...)" parenthetical if present
+    if "(YES" in question:
+        idx = question.find("(YES")
+        if idx > 5:
+            return question[:idx].strip().rstrip(",").strip()
+    return question
+
+
 def generate_queries(question: str, category: str, snapshot_ts: str) -> list[str]:
     """
     Generate 2-3 targeted search queries for a market question.
-    Injects date context from snapshot_ts to bias toward temporally relevant results.
+    Always uses the CLEAN original question (strips binary preamble).
     """
-    snap_date = snapshot_ts[:10]  # YYYY-MM-DD
     snap_year = snapshot_ts[:4]
 
-    q = question.strip().rstrip("?")
-    queries = [f"{q} {snap_year}"]  # primary query always has the year
+    # Always clean the question before building search queries
+    clean_q = _clean_for_search(question).strip().rstrip("?")
+    queries  = [f"{clean_q} {snap_year}"]   # primary: clean question + year
 
     cat = category.lower()
-    ql = question.lower()
+    ql  = clean_q.lower()
 
     if cat == "sports":
-        ql = question.lower()
-        if "tennis" in ql or "wta" in ql or "atp" in ql or "itf" in ql:
-            # For tennis: ranking + head-to-head are what matter
-            queries.append(f"{q} ranking head-to-head form {snap_year}")
-            queries.append(f"{q} WTA ATP ranking recent results")
-        elif "cricket" in ql or "test match" in ql or "county" in ql:
-            queries.append(f"{q} team ranking recent form {snap_year}")
-            queries.append(f"{q} cricket match preview head-to-head")
-        elif "who won" in ql or "who will win" in ql:
-            # Generic "who won" — search for result or standings
-            queries.append(f"{q} result winner {snap_year}")
-            queries.append(f"{q} standings prediction {snap_year}")
+        if any(k in ql for k in ["tennis", "wta", "atp", "itf", "challenger"]):
+            queries.append(f"{clean_q} ranking head-to-head {snap_year}")
+            queries.append(f"{clean_q} WTA ATP player ranking recent form")
+        elif any(k in ql for k in ["cricket", "test match", "county", "odi", "t20"]):
+            queries.append(f"{clean_q} result winner {snap_year}")
+            queries.append(f"{clean_q} cricket match head-to-head ranking")
+        elif any(k in ql for k in ["ligue 1", "la liga", "serie a", "bundesliga",
+                                    "premier league", "eredivisie", "liga portugal"]):
+            queries.append(f"{clean_q} final standings champion {snap_year}")
+            queries.append(f"{clean_q} league winner title {snap_year}")
         else:
-            queries.append(f"{q} result score odds {snap_year}")
-    elif cat == "finance":
-        queries.append(f"{q} forecast analyst prediction {snap_date}")
-        queries.append(f"{q} market outlook probability")
+            queries.append(f"{clean_q} result winner score {snap_year}")
+            queries.append(f"{clean_q} standings prediction {snap_year}")
+
     elif cat == "politics":
-        queries.append(f"{q} poll survey forecast {snap_year}")
-        queries.append(f"{q} election prediction probability")
+        # For elections: look for RESULTS, not predictions
+        if any(k in ql for k in ["prime minister", "president", "chancellor", "pm "]):
+            queries.append(f"{clean_q} election result winner {snap_year}")
+            queries.append(f"{clean_q} election outcome {snap_year}")
+        elif any(k in ql for k in ["primary", "senate", "congress", "district"]):
+            queries.append(f"{clean_q} primary result winner {snap_year}")
+            queries.append(f"{clean_q} election results {snap_year}")
+        elif any(k in ql for k in ["vote", "senator", "supreme court"]):
+            queries.append(f"{clean_q} vote count tally {snap_year}")
+            queries.append(f"{clean_q} final vote result {snap_year}")
+        else:
+            queries.append(f"{clean_q} election result {snap_year}")
+            queries.append(f"{clean_q} winner outcome {snap_year}")
+
+    elif cat == "culture":
+        # Entertainment: look for reveals, finales, winners
+        if any(k in ql for k in ["survivor", "masked singer", "bachelor", "big brother",
+                                   "amazing race", "drag race", "idol"]):
+            queries.append(f"{clean_q} winner finale reveal {snap_year}")
+            queries.append(f"{clean_q} episode result eliminated {snap_year}")
+        elif any(k in ql for k in ["netflix", "roast", "special", "host"]):
+            queries.append(f"{clean_q} announced confirmed {snap_year}")
+            queries.append(f"{clean_q} news reveal {snap_year}")
+        elif any(k in ql for k in ["emmy", "oscar", "grammy", "tony", "award"]):
+            queries.append(f"{clean_q} winner {snap_year}")
+            queries.append(f"{clean_q} award result {snap_year}")
+        else:
+            queries.append(f"{clean_q} winner result {snap_year}")
+            queries.append(f"{clean_q} confirmed news {snap_year}")
+
+    elif cat == "finance":
+        queries.append(f"{clean_q} forecast analyst {snap_year}")
+        queries.append(f"{clean_q} market outlook probability")
+
     elif cat == "science_tech":
-        queries.append(f"{q} latest news update {snap_year}")
-        queries.append(f"{q} probability estimate expert opinion")
-    else:  # culture / general
-        queries.append(f"{q} confirmed rumor news {snap_year}")
-        queries.append(f"{q} odds probability")
+        queries.append(f"{clean_q} latest news {snap_year}")
+        queries.append(f"{clean_q} update result announcement {snap_year}")
+
+    else:
+        queries.append(f"{clean_q} result winner {snap_year}")
+        queries.append(f"{clean_q} confirmed news {snap_year}")
 
     return queries[:3]
 

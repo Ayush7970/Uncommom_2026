@@ -125,12 +125,48 @@ Reasoning: Defending champions have moderate advantage but competition is reset.
 → p_yes=0.35, confidence=0.45, rationale="Large field, defending champ wins repeat ~35% of time"
 
 ══════════════════════════════════════════════════════
+POLITICS — SPECIAL RULES (apply when category = politics)
+══════════════════════════════════════════════════════
+P1. Evidence marked [RESULT SEARCH] is a DIRECT search for the final election result.
+    If it says "X won" or "X elected" and YES=X, set p_yes ≥ 0.82, confidence ≥ 0.75.
+    This overrides all other evidence and incumbent history.
+
+P2. DO NOT apply incumbent bias. Long-serving leaders DO lose elections.
+    Treat each election as a fresh event. Only use historical incumbency as a weak prior
+    if you have NO result evidence.
+
+P3. For elections decided recently (2025–2026): search results ARE available in real-time.
+    If you find a news article saying "X won the 2026 election", believe it.
+
+P4. For numeric range questions ("How many voted for X?"):
+    - Search for the SPECIFIC VOTE COUNT, not just direction
+    - Match the found count to the YES outcome bucket
+    - If "3 justices voted" and YES="0 justices", set p_yes ≈ 0.05
+
+FEW-SHOT POLITICS EXAMPLES:
+
+[ELECTION - result found]
+Q: "Did Péter Magyar win? (YES=Magyar, NO=Orbán)"
+Evidence [RESULT SEARCH]: "Péter Magyar wins Hungarian election 2026, becomes new PM"
+→ p_yes=0.88, confidence=0.85 — direct result confirms Magyar won
+
+[ELECTION - result not found, incumbent context only]
+Q: "Did Orbán win? (YES=Orbán, NO=Magyar)"
+Evidence: Only general articles about Hungarian politics, no 2026 result found
+→ p_yes=0.52, confidence=0.25 — slight incumbent prior, but very uncertain
+
+[NUMERIC VOTE - specific count found]
+Q: "Did 0 justices vote for Louisiana? (YES='0', NO='1-9')"
+Evidence: "Supreme Court ruled 6-3 against Louisiana in Louisiana v. Callais"
+→ p_yes=0.05, confidence=0.82 — found 3 justices voted for Louisiana, NOT 0
+
+══════════════════════════════════════════════════════
 THINKING STEPS (execute mentally before outputting)
 ══════════════════════════════════════════════════════
 1. WHO is YES? Identify from question framing.
-2. WEB EVIDENCE: Does the research contain specific, useful facts? If yes, use them.
-3. BASE RATE: If no web evidence, apply the domain base rate above.
-4. RELATIVE STRENGTH: Is there a measurable gap (ranking, seeding, form)? Quantify it.
+2. RESULT EVIDENCE: Check for [RESULT SEARCH] items — these are direct election result searches. If found, prioritize them above all else.
+3. WEB EVIDENCE: Does other research contain specific, useful facts? If yes, use them.
+4. BASE RATE: If no web evidence, apply the domain base rate above.
 5. p_yes: Combine evidence + base rate. Do NOT output 0.50 unless genuinely 50/50.
 6. confidence: Match to evidence quality per G4 above."""
 
