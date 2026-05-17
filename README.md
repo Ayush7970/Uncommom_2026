@@ -1,8 +1,19 @@
-# PRIMA -o | Prediction-market Reasoning Infrastructure for Multi-trial Agents
+<img width="700" height="120" alt="image" src="https://github.com/user-attachments/assets/79e93f2e-7b7d-48b4-b61b-f19ff46c047c" />
+<!-- <img width="1440" height="1080" alt="image" src="https://github.com/user-attachments/assets/9c93db8a-1b6a-43f7-b70a-f01b36499999" /> -->
+<!-- <img width="1246" height="952" alt="image" src="https://github.com/user-attachments/assets/7efe8e45-f433-43b4-8c9e-afdb29df97d2" /> -->
+<!-- <p align="center"> -->
+<img src="https://github.com/user-attachments/assets/66fd3b01-0496-4f92-be74-26c2c38c89a9" alt="PRIMA-o logo" width="700" height="500"/>
+<!-- </p> -->
 
-Orchestrated via LangGraph, built upon Prophet Arena & Murphy's BLF systems, we develop 
-what neither does alone: route by domain, refine by evidence, know when to trust the 
-crowd, and when to beat it.
+<h1 align="left">PRIMA -o</h1>
+<p align="left">
+Prediction-market Reasoning Infrastructure for Multi-trial Agents
+</p>
+<p align="center">
+  Orchestrated via LangGraph, built upon Prophet Arena &amp; Murphy's BLF systems,<br/>
+  we develop what neither does alone: route by domain, refine by evidence,<br/>
+  know when to trust the crowd, and when to beat it.
+</p>
 
 # Prophet Arena Sigma Lab AI Forecasting Track
 
