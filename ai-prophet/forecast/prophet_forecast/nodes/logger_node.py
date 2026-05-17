@@ -37,7 +37,7 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
             rationale TEXT,
             confidence REAL,
             iteration INTEGER,
-            evidence_count INTEGER,
+            evidence TEXT,
             error TEXT
         )
     """)
@@ -54,7 +54,7 @@ def logger_node(state: ForecastState) -> dict:
                 logged_at, market_id, question, category, time_bucket,
                 snapshot_ts, resolves_at, p_market, p_ml, p_llm_raw,
                 p_calibrated, p_final, w_t, rationale, confidence,
-                iteration, evidence_count, error
+                iteration, evidence, error
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             datetime.now(UTC).isoformat(),
@@ -73,7 +73,7 @@ def logger_node(state: ForecastState) -> dict:
             state.get("rationale"),
             state.get("confidence"),
             state.get("iteration", 0),
-            len(state.get("evidence", [])),
+            json.dumps(state.get("evidence", [])),
             state.get("error"),
         ))
         conn.commit()

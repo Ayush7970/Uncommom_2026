@@ -32,6 +32,9 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 from prophet_forecast.graph import forecast_graph
 from prophet_forecast.eval.metrics import summarise
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "snowflake"))
+from ingest import push_to_snowflake
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
@@ -317,6 +320,10 @@ def main() -> None:
         print(f"  PREDICTIONS ONLY ({len(all_rows)} forecasts — no outcomes yet)")
         print(f"  Results saved to: {csv_path}")
         print(f"{'='*60}\n")
+
+    # Push SQLite log to Snowflake (no-op if credentials not set)
+    db_path = os.environ.get("FORECAST_DB_PATH", "forecast_log.db")
+    push_to_snowflake(db_path)
 
 
 if __name__ == "__main__":
